@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -32,10 +33,13 @@
 <div id="app" style="height:100vh"></div>
 
 <script src="/socket.io/socket.io.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 "use strict";
 
 /* ===================== ESTADO ===================== */
+var leafletMap = null;
+
 var state = {
   view: 'bandeja',
   filterTipo: 'Todos',
@@ -390,8 +394,8 @@ function renderBandeja(){
       + '</div></div>';
     }).join('');
 
-    var headerRight = sel.agente==='Sin asignar'
-      ? '<button data-action="tomar-caso" style="border:none;background:#13315c;color:#fff;font-weight:600;font-size:13px;padding:9px 16px;border-radius:9px;cursor:pointer">Tomar caso</button>'
+    var headerRight = sel.agente === 'Sin asignar'
+      ? '<div style="font-size:12px;color:#9aa6b6;text-align:right;font-weight:500">Bot activo</div>'
       : '<div style="font-size:12px;color:#5a6b82;text-align:right">Atiende<br><span style="font-weight:600;color:#15233a">'+esc(sel.agente)+'</span></div>';
 
     chatPane = '<section style="flex:1;min-width:0;display:flex;flex-direction:column;background:#f7f9fc;min-height:0">'
@@ -459,15 +463,23 @@ function renderBandeja(){
           + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Canal</span><span style="font-size:12.5px;font-weight:600;color:#15233a">'+esc(sel.channel||'WhatsApp')+'</span></div>'
           + (sel.phone && !sel.phone.startsWith('597') ? '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Teléfono</span><span style="font-size:12.5px;font-weight:600;color:#15233a;font-family:\'IBM Plex Mono\',monospace">'+esc(sel.phone)+'</span></div>' : '')
           + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Prioridad</span><span style="'+badge(pcc[0],pcc[1])+'">'+esc(sel.prioridad)+'</span></div>'
-          + '<div><div style="font-size:12.5px;color:#7a8699;margin-bottom:8px">Estado del caso</div><div style="display:flex;gap:6px">'+estBtn('Nuevo')+estBtn('En proceso')+estBtn('Cerrado')+'</div></div>'
+          + '<div><div style="font-size:12.5px;color:#7a8699;margin-bottom:8px">Estado del caso</div><div style="display:flex;gap:6px">'+estBtn('En proceso')+estBtn('Cerrado')+'</div></div>'
           + '<div><div style="font-size:12.5px;color:#7a8699;margin-bottom:8px">Agente asignado</div><select data-field="agente" style="width:100%;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:9px;padding:9px 11px;font-size:13px;color:#15233a;outline:none;cursor:pointer;font-weight:500">'+agOpts+'</select></div>'
         + '</div>'
       + '</div>'
       + '<div style="padding:18px;border-bottom:1px solid #eef1f6"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:13px">Evidencia adjunta</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+evid+'</div></div>'
-      + '<div style="padding:18px"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:13px">Ubicación reportada</div>'
-        + '<div style="height:120px;border-radius:11px;border:1px solid #e3e8f0;background-image:repeating-linear-gradient(0deg,#eef3f9 0 22px,#e6edf5 22px 23px),repeating-linear-gradient(90deg,#eef3f9 0 22px,#e6edf5 22px 23px);position:relative;overflow:hidden"><span style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#c0392b;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);animation:pulsedot 2s infinite"></span><span style="position:absolute;left:10px;bottom:9px;font-size:10px;color:#5a6b82;font-family:\'IBM Plex Mono\',monospace;background:rgba(255,255,255,.9);padding:2px 7px;border-radius:5px">'+esc(sel.zona)+' · '+esc(sel.coords||'—')+'</span></div>'
-        + '<div style="display:flex;gap:8px;margin-top:14px"><button data-action="view-mapa" style="flex:1;border:1px solid #e3e8f0;background:#fff;color:#33405a;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Ver en mapa</button><button style="flex:1;border:none;background:#13315c;color:#fff;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Generar folio PDF</button></div>'
-      + '</div>'
+      + (function(){
+          var coordStr = (sel.coords && sel.coords !== '—') ? sel.coords : null;
+          if (!coordStr) {
+            var lm = (sel.messages||[]).find(function(m){ return m.type==='location' && m.lat !== undefined; });
+            if (lm) coordStr = lm.lat.toFixed(5)+', '+lm.lng.toFixed(5);
+          }
+          var mapHtml = coordStr
+            ? '<div id="caso-map" data-coords="'+esc(coordStr)+'" style="height:210px;border-radius:11px;border:1px solid #e3e8f0;overflow:hidden;position:relative;z-index:0"></div>'
+              + '<div style="font-size:11px;color:#7a8699;font-family:\'IBM Plex Mono\',monospace;margin-top:7px;padding-left:2px">'+esc(coordStr)+'</div>'
+            : '<div style="height:80px;border-radius:11px;border:1px solid #e3e8f0;background:#f7f9fc;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:13px">Sin ubicación reportada</div>';
+          return '<div style="padding:18px"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:10px">Ubicación reportada</div>'+mapHtml+'</div>';
+        })()
       + '<div style="padding:14px 18px;border-top:1px solid #eef1f6">'
         + '<button data-action="eliminar-caso" style="width:100%;border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Eliminar caso</button>'
       + '</div>'
@@ -627,6 +639,30 @@ function renderAgentes(){
   return '<div style="height:100%;overflow:auto;padding:24px 28px"><div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;overflow:hidden"><div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr;padding:14px 20px;background:#f7f9fc;border-bottom:1px solid #eef1f6;font-size:11.5px;font-weight:600;color:#7a8699;letter-spacing:.4px"><span>AGENTE</span><span>RANGO</span><span>ZONA</span><span>CASOS ACTIVOS</span><span>ESTADO</span></div>'+rows+'</div></div>';
 }
 
+/* ===================== MAPA LEAFLET ===================== */
+function initCasoMap() {
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  var el = document.getElementById('caso-map');
+  if (!el) return;
+  var coordStr = el.getAttribute('data-coords');
+  if (!coordStr) return;
+  var parts = coordStr.split(',').map(function(s){ return parseFloat(s.trim()); });
+  if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return;
+  var lat = parts[0], lng = parts[1];
+
+  leafletMap = L.map('caso-map', { attributionControl: false }).setView([lat, lng], 16);
+
+  var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+  var satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+
+  osmLayer.addTo(leafletMap);
+  L.control.layers({'🗺 Normal': osmLayer, '🛰 Satélite': satLayer}, {}, { position: 'topright' }).addTo(leafletMap);
+
+  L.marker([lat, lng]).addTo(leafletMap)
+    .bindPopup('<b>📍 Ubicación reportada</b><br><span style="font-family:monospace;font-size:11px">'+coordStr+'</span>')
+    .openPopup();
+}
+
 /* ===================== RENDER PRINCIPAL ===================== */
 function render(){
   var content;
@@ -643,6 +679,7 @@ function render(){
   if(state._focus==='search'){ var si=document.getElementById('searchInput'); if(si){ si.focus(); var n=si.value.length; si.setSelectionRange(n,n); } }
   else if(state._focus==='composer'){ var ci=document.getElementById('composerInput'); if(ci){ ci.focus(); var m=ci.value.length; ci.setSelectionRange(m,m); } }
   state._focus=null;
+  setTimeout(initCasoMap, 0);
 }
 
 /* ===================== ACCIONES WHATSAPP ===================== */

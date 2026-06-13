@@ -27,6 +27,12 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 app.use('/api', apiRoutes);
 
+// History mode: devolver index.html para cualquier ruta que no sea API ni assets
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io') || req.path.startsWith('/media')) return next();
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 io.on('connection', (socket) => {
   console.log(`🖥️  Panel conectado: ${socket.id}`);
 

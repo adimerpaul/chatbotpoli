@@ -54,7 +54,12 @@ ${transcript}`
       }]
     });
 
-    return JSON.parse(response.content[0].text.trim());
+    const raw = response.content[0].text.trim();
+    // El modelo a veces envuelve el JSON en ```json ... ``` — los limpiamos antes de parsear
+    const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const result = JSON.parse(clean);
+    console.log(`[Claude] Análisis OK — tipo: ${result.tipo}, prioridad: ${result.prioridad}, conf: ${result.aiConfidence}%`);
+    return result;
   } catch (err) {
     console.error('[Claude] Error en análisis:', err.message);
     return null;

@@ -26,10 +26,14 @@ let ioRef = null;
 let currentQRDataUrl = null;
 let connectedPhone = '';
 let waStatus = 'connecting'; // 'connecting' | 'qr' | 'ready'
+let botEnabled = true;
 
 function getWAInfo() {
   return { status: waStatus, qrDataUrl: currentQRDataUrl, phone: connectedPhone };
 }
+
+function getBotEnabled() { return botEnabled; }
+function setBotEnabled(val) { botEnabled = !!val; }
 
 function now() {
   const d = new Date();
@@ -297,12 +301,17 @@ async function handleIncoming(msg) {
     return;
   }
 
+  if (!botEnabled) {
+    console.log(`[MSG] bot desactivado — sin respuesta automática`);
+    if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
+    return;
+  }
+
   let botText;
   if (content.type === 'text') {
     console.log(`[MSG] generando respuesta con Claude...`);
     botText = await generateBotResponse(convCheck.messages);
   } else {
-    // Acusar recibo de media
     const acks = {
       image:    'Recibimos tu foto. Un agente la revisará pronto.',
       video:    'Recibimos tu video. Un agente lo revisará pronto.',
@@ -313,25 +322,26 @@ async function handleIncoming(msg) {
     botText = acks[content.type] || 'Recibimos tu mensaje. Un agente lo atenderá pronto.';
   }
 
-  if (!botText) return;
-
-  const tBot = now();
-  try {
-    await sock.sendMessage(jid, { text: botText });
-    console.log(`[MSG] respuesta enviada ✓`);
-  } catch (err) {
-    console.error(`[MSG] ERROR enviando:`, err.message);
+  if (botText) {
+    const tBot = now();
+    try {
+      await sock.sendMessage(jid, { text: botText });
+      console.log(`[MSG] respuesta enviada ✓`);
+    } catch (err) {
+      console.error(`[MSG] ERROR enviando:`, err.message);
+    }
+    store.addMessage(phone, { from: 'bot', type: 'text', text: botText, time: tBot });
+    await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
   }
 
-  store.addMessage(phone, { from: 'bot', type: 'text', text: botText, time: tBot });
-  await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
-
-  // Análisis con Claude solo en conversaciones de texto
+  // El análisis corre SIEMPRE en mensajes de texto, independientemente de si el bot respondió.
+  // Es lo que actualiza tipo, prioridad y delito en tiempo real.
   if (content.type === 'text') {
     const analysis = await analyzeConversation(store.get(phone).messages);
     if (analysis) {
       store.update(phone, analysis);
       await db.updateConversacion(convCheck.id, analysis);
+      console.log(`[MSG] tipo actualizado → ${analysis.tipo} (${analysis.prioridad})`);
     }
   }
 
@@ -361,4 +371,4 @@ async function resetSession(io) {
   await connectWhatsApp(io || ioRef);
 }
 
-module.exports = { connectWhatsApp, sendMessage, isConnected, getWAInfo, resetSession };
+module.exports = { connectWhatsApp, sendMessage, isConnected, getWAInfo, resetSession, getBotEnabled, setBotEnabled };

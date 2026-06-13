@@ -24,7 +24,6 @@ async function initDB() {
         primer_contacto DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         ultimo_contacto DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         deleted_at      DATETIME NULL DEFAULT NULL,
-        UNIQUE KEY uq_phone (phone),
         INDEX idx_softdel (deleted_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
@@ -47,7 +46,6 @@ async function initDB() {
         created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         deleted_at    DATETIME NULL DEFAULT NULL,
-        UNIQUE KEY uq_folio (folio),
         CONSTRAINT fk_conv_ciudadano FOREIGN KEY (ciudadano_id) REFERENCES ciudadanos(id),
         INDEX idx_estado  (estado),
         INDEX idx_softdel (deleted_at)

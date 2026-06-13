@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const store = require('../store/conversations');
-const { sendMessage, isConnected, getWAInfo, resetSession } = require('../bot/whatsapp');
+const { sendMessage, isConnected, getWAInfo, resetSession, getBotEnabled, setBotEnabled } = require('../bot/whatsapp');
 const db = require('../db/service');
 
 function now() {
@@ -30,6 +30,18 @@ router.post('/db/truncate', async (req, res) => {
 
 router.get('/status', (_req, res) => {
   res.json(getWAInfo());
+});
+
+router.get('/bot/status', (_req, res) => {
+  res.json({ enabled: getBotEnabled() });
+});
+
+router.post('/bot/toggle', (req, res) => {
+  const next = req.body.enabled !== undefined ? !!req.body.enabled : !getBotEnabled();
+  setBotEnabled(next);
+  console.log(`🤖 Bot IA ${next ? 'activado' : 'desactivado'}`);
+  req.app.get('io').emit('bot:status', { enabled: next });
+  res.json({ enabled: next });
 });
 
 // Borrar sesión guardada y reconectar (muestra QR nuevo)

@@ -8,7 +8,7 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME     || 'chatbotpoli',
   waitForConnections: true,
   connectionLimit: 10,
-  timezone: '+00:00'
+  timezone: '-04:00'
 });
 
 module.exports = pool;

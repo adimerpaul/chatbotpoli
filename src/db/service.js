@@ -12,24 +12,40 @@ async function saveSession(phone) {
 // Inserta o actualiza el ciudadano, devuelve su ID
 async function upsertCiudadano(phone, nombre = null) {
   try {
-    await pool.query(
-      `INSERT INTO ciudadanos (phone)
-       VALUES (?)
-       ON DUPLICATE KEY UPDATE ultimo_contacto = NOW()`,
-      [phone]
-    );
-    if (nombre) {
-      // Solo actualiza nombre si aún está vacío o era el teléfono como placeholder
-      await pool.query(
-        'UPDATE ciudadanos SET nombre = ? WHERE phone = ? AND (nombre IS NULL OR nombre = phone)',
-        [nombre, phone]
-      );
-    }
-    const [[row]] = await pool.query(
+    // await pool.query(
+    //   `INSERT INTO ciudadanos (phone)
+    //    VALUES (?)
+    //    ON DUPLICATE KEY UPDATE ultimo_contacto = NOW()`,
+    //   [phone]
+    // );
+    findCiudadano = await pool.query(
       'SELECT id FROM ciudadanos WHERE phone = ? AND deleted_at IS NULL',
       [phone]
     );
-    return row?.id ?? null;
+    if (findCiudadano[0].length === 0) {
+      await pool.query(
+        'INSERT INTO ciudadanos (phone, nombre) VALUES (?, ?)',
+        [phone, nombre || phone]
+      );
+    }else {
+      await pool.query(
+        'UPDATE ciudadanos SET ultimo_contacto = NOW() WHERE phone = ? AND deleted_at IS NULL',
+        [phone]
+      );
+    }
+    return findCiudadano[0][0]?.id ?? null;
+    // if (nombre) {
+    //   // Solo actualiza nombre si aún está vacío o era el teléfono como placeholder
+    //   await pool.query(
+    //     'UPDATE ciudadanos SET nombre = ? WHERE phone = ? AND (nombre IS NULL OR nombre = phone)',
+    //     [nombre, phone]
+    //   );
+    // }
+    // const [[row]] = await pool.query(
+    //   'SELECT id FROM ciudadanos WHERE phone = ? AND deleted_at IS NULL',
+    //   [phone]
+    // );
+    // return row?.id ?? null;
   } catch (err) {
     console.error('[DB] upsertCiudadano:', err.message);
     return null;
