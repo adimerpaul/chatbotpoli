@@ -1,0 +1,19 @@
+{
+  "name": "chatbotpoli",
+  "version": "1.0.0",
+  "description": "Panel de atención ciudadana - Policía Boliviana Oruro",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
+    "@whiskeysockets/baileys": "^6.7.18",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io": "^4.8.1"
+  }
+}

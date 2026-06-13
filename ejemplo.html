@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel Chatbot · Policía Oruro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  input,select,button,textarea{font-family:inherit}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#cdd5e2;border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:#aab6c8;background-clip:padding-box}
+  ::-webkit-scrollbar-track{background:transparent}
+  @keyframes pulsedot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5)}70%{box-shadow:0 0 0 9px rgba(192,57,43,0)}100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}}
+  @keyframes livedot{0%,100%{opacity:1}50%{opacity:.35}}
+  button{font-family:inherit}
+</style>
+</head>
+<body>
+<div id="app" style="height:100vh"></div>
+
+<script>
+"use strict";
+
+/* ===================== ESTADO + DATOS ===================== */
+function seed(){
+  return [
+    { id:'ORU-2026-00231', name:'María Quispe', initials:'MQ', channel:'WhatsApp', time:'14:32',
+      tipo:'Emergencia', prioridad:'Alta', delito:'Violencia intrafamiliar', zona:'Zona Sud', coordsLabel:'calle Bolívar #240', coords:'-17.985, -67.118',
+      estado:'Nuevo', agente:'Sin asignar', unread:true, aiConfidence:96,
+      preview:'Por favor ayuda, mi esposo me está agrediendo, tengo miedo. Estoy encerrada en el baño.',
+      recomendacion:'Despachar Radio Patrulla 110 y notificar a la FELCV de inmediato. Riesgo de vida.',
+      aiPuntos:[
+        'Agresión física en curso por parte de la pareja.',
+        'Víctima encerrada en el baño — peligro inmediato.',
+        'Dirección entregada: Zona Sud, calle Bolívar #240.',
+        'Requiere intervención de la FELCV.'
+      ],
+      evidencia:['audio.ogg','ubicación'],
+      messages:[
+        {from:'bot', text:'Hola, soy el asistente virtual de la Policía de Oruro. ¿En qué puedo ayudarle?', time:'14:28'},
+        {from:'ciudadano', text:'Por favor ayuda, mi esposo me está agrediendo, tengo miedo', time:'14:29'},
+        {from:'bot', text:'Entiendo que es una situación de emergencia. ¿Usted o alguien más está en peligro inmediato?', time:'14:29'},
+        {from:'ciudadano', text:'Sí, estoy encerrada en el baño', time:'14:30'},
+        {from:'bot', text:'He clasificado su caso como EMERGENCIA — Violencia intrafamiliar y notifiqué a una patrulla de la FELCV. ¿Me confirma su dirección?', time:'14:30'},
+        {from:'ciudadano', text:'Zona Sud, calle Bolívar #240', time:'14:31'},
+        {from:'bot', text:'Patrulla en camino. Mantenga la línea. Un oficial humano tomará su caso ahora.', time:'14:32'},
+        {from:'sistema', text:'Caso escalado a operador humano · 14:32'}
+      ]
+    },
+    { id:'ORU-2026-00230', name:'Carlos Mamani', initials:'CM', channel:'Web', time:'14:10',
+      tipo:'Denuncia', prioridad:'Media', delito:'Robo a vivienda', zona:'Centro', coordsLabel:'Av. 6 de Octubre #1450', coords:'-17.967, -67.114',
+      estado:'En proceso', agente:'Sgto. Flores', unread:false, aiConfidence:91,
+      preview:'Quiero denunciar que ingresaron a mi casa mientras no estábamos y se llevaron varias cosas.',
+      recomendacion:'Registrar denuncia formal y derivar a FELCC. Solicitar inventario de bienes sustraídos.',
+      aiPuntos:[
+        'Robo a domicilio durante ausencia de los ocupantes.',
+        'Sustracción de electrodomésticos y dinero en efectivo.',
+        'Dirección: Centro, Av. 6 de Octubre #1450.'
+      ],
+      evidencia:['foto1.jpg'],
+      messages:[
+        {from:'bot', text:'Bienvenido al canal de denuncias. ¿Qué desea reportar?', time:'14:05'},
+        {from:'ciudadano', text:'Ingresaron a mi casa y robaron mientras no estábamos', time:'14:06'},
+        {from:'bot', text:'Lamento lo ocurrido. ¿Qué objetos fueron sustraídos?', time:'14:06'},
+        {from:'ciudadano', text:'Un televisor, una laptop y dinero en efectivo', time:'14:08'},
+        {from:'bot', text:'Registré su denuncia como Robo a vivienda. Se generó el folio ORU-2026-00230 y fue derivado a la FELCC.', time:'14:09'},
+        {from:'agente', text:'Buenas tardes, soy el Sgto. Flores. Necesito que pase mañana por la FELCC con su CI para ampliar la denuncia.', time:'14:10'}
+      ]
+    },
+    { id:'ORU-2026-00229', name:'Ana Rojas', initials:'AR', channel:'WhatsApp', time:'13:48',
+      tipo:'Consulta', prioridad:'Baja', delito:'Requisitos de denuncia', zona:'Zona Norte', coordsLabel:'—', coords:'-17.955, -67.108',
+      estado:'Nuevo', agente:'Sin asignar', unread:true, aiConfidence:88,
+      preview:'¿Qué documentos necesito para hacer una denuncia por pérdida de documentos?',
+      recomendacion:'Consulta informativa. Puede ser resuelta automáticamente por el asistente.',
+      aiPuntos:[
+        'Solicita requisitos para denunciar pérdida de documentos.',
+        'No constituye un hecho delictivo en curso.'
+      ],
+      evidencia:[],
+      messages:[
+        {from:'ciudadano', text:'Hola, ¿qué necesito para denunciar la pérdida de mi carnet?', time:'13:47'},
+        {from:'bot', text:'Para una denuncia por pérdida de documentos necesita: su número de CI, lugar y fecha aproximada de la pérdida. Puede iniciarla aquí mismo. ¿Desea continuar?', time:'13:48'}
+      ]
+    },
+    { id:'ORU-2026-00228', name:'Juan Pérez', initials:'JP', channel:'SMS', time:'13:21',
+      tipo:'Denuncia', prioridad:'Alta', delito:'Robo de vehículo', zona:'Zona Este', coordsLabel:'Mercado Fermín López', coords:'-17.972, -67.095',
+      estado:'En proceso', agente:'Cabo Choque', unread:false, aiConfidence:93,
+      preview:'Me robaron mi auto, un Toyota gris, estaba estacionado frente al mercado.',
+      recomendacion:'Emitir alerta de vehículo robado y notificar a Tránsito. Solicitar placa y características.',
+      aiPuntos:[
+        'Robo de vehículo Toyota color gris.',
+        'Sustraído frente al Mercado Fermín López.',
+        'Caso requiere alerta vehicular inmediata.'
+      ],
+      evidencia:['placa.jpg'],
+      messages:[
+        {from:'ciudadano', text:'Me robaron mi auto frente al mercado', time:'13:19'},
+        {from:'bot', text:'Lo siento. ¿Puede darme la placa y el modelo del vehículo?', time:'13:19'},
+        {from:'ciudadano', text:'Toyota gris, placa 2345-ABC', time:'13:20'},
+        {from:'bot', text:'Emití una alerta de vehículo robado y notifiqué a Tránsito. Folio ORU-2026-00228.', time:'13:21'}
+      ]
+    },
+    { id:'ORU-2026-00227', name:'Lucía Vargas', initials:'LV', channel:'Web', time:'12:55',
+      tipo:'Emergencia', prioridad:'Alta', delito:'Accidente de tránsito', zona:'Av. Cívica', coordsLabel:'Av. Cívica esq. España', coords:'-17.963, -67.122',
+      estado:'Nuevo', agente:'Sin asignar', unread:true, aiConfidence:94,
+      preview:'Hubo un choque en la Av. Cívica, hay una persona herida en el suelo.',
+      recomendacion:'Despachar ambulancia y Tránsito. Posible lesionado, prioridad máxima.',
+      aiPuntos:[
+        'Accidente de tránsito con persona herida.',
+        'Ubicación: Av. Cívica esquina España.',
+        'Requiere ambulancia y unidad de Tránsito.'
+      ],
+      evidencia:['foto.jpg'],
+      messages:[
+        {from:'ciudadano', text:'Choque en la Av. Cívica, hay un herido', time:'12:54'},
+        {from:'bot', text:'Clasifiqué su reporte como EMERGENCIA — Accidente de tránsito. ¿La persona está consciente?', time:'12:54'},
+        {from:'ciudadano', text:'No sé, está en el suelo', time:'12:55'},
+        {from:'bot', text:'Despaché ambulancia y unidad de Tránsito. Un operador tomará su caso.', time:'12:55'}
+      ]
+    },
+    { id:'ORU-2026-00226', name:'Pedro Condori', initials:'PC', channel:'WhatsApp', time:'11:40',
+      tipo:'Consulta', prioridad:'Baja', delito:'Horarios de atención', zona:'Centro', coordsLabel:'—', coords:'-17.968, -67.115',
+      estado:'Cerrado', agente:'Of. Gutiérrez (Tú)', unread:false, aiConfidence:97,
+      preview:'¿A qué hora atiende la FELCC los fines de semana?',
+      recomendacion:'Consulta resuelta automáticamente. Sin acción adicional requerida.',
+      aiPuntos:[
+        'Consulta sobre horario de atención de la FELCC.',
+        'Resuelta por el asistente sin intervención.'
+      ],
+      evidencia:[],
+      messages:[
+        {from:'ciudadano', text:'¿A qué hora atiende la FELCC los sábados?', time:'11:39'},
+        {from:'bot', text:'La FELCC atiende sábados de 08:00 a 12:00. Para emergencias, marque 110 las 24 horas.', time:'11:40'},
+        {from:'sistema', text:'Consulta resuelta automáticamente · 11:40'}
+      ]
+    },
+    { id:'ORU-2026-00225', name:'Rosa Apaza', initials:'RA', channel:'WhatsApp', time:'10:18',
+      tipo:'Denuncia', prioridad:'Media', delito:'Estafa', zona:'Zona Sud', coordsLabel:'—', coords:'-17.988, -67.120',
+      estado:'Nuevo', agente:'Sin asignar', unread:false, aiConfidence:85,
+      preview:'Me hicieron un depósito falso por la venta de un celular y ya entregué el producto.',
+      recomendacion:'Registrar denuncia por estafa. Solicitar comprobantes y conversación con el estafador.',
+      aiPuntos:[
+        'Estafa mediante comprobante de depósito falso.',
+        'La víctima ya entregó el producto vendido.',
+        'Requiere recolección de evidencia digital.'
+      ],
+      evidencia:['chat.png','recibo.jpg'],
+      messages:[
+        {from:'ciudadano', text:'Me estafaron con un depósito falso por un celular', time:'10:17'},
+        {from:'bot', text:'Lamento lo ocurrido. ¿Conserva el comprobante y la conversación con la persona?', time:'10:17'},
+        {from:'ciudadano', text:'Sí, tengo capturas de todo', time:'10:18'},
+        {from:'bot', text:'Registré su denuncia por Estafa. Adjunte las capturas y un oficial la revisará.', time:'10:18'}
+      ]
+    }
+  ];
+}
+
+var state = {
+  view:'bandeja',
+  filterTipo:'Todos',
+  filterPrioridad:'Todas',
+  search:'',
+  selectedId:'ORU-2026-00231',
+  composer:'',
+  _focus:null,
+  convs: seed()
+};
+
+/* ===================== HELPERS ===================== */
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function tipoCol(t){ return ({Emergencia:['#c0392b','#fbe9e7'],Denuncia:['#b9751a','#fbf1e0'],Consulta:['#2f6fed','#e7f0ff']})[t]||['#5a6b82','#eef1f6']; }
+function prioCol(p){ return ({Alta:['#c0392b','#fbe9e7'],Media:['#b9751a','#fbf1e0'],Baja:['#1f8a5b','#e6f5ee']})[p]||['#5a6b82','#eef1f6']; }
+function estCol(e){ return ({Nuevo:['#2f6fed','#e7f0ff'],'En proceso':['#b9751a','#fbf1e0'],Cerrado:['#5a6b82','#eef1f6']})[e]||['#5a6b82','#eef1f6']; }
+function badge(fg,bg){ return 'display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.2px;color:'+fg+';background:'+bg; }
+function avatarStyle(t){ var c=tipoCol(t); return 'width:38px;height:38px;border-radius:11px;background:'+c[1]+';color:'+c[0]+';display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;flex-shrink:0'; }
+function now(){ var d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function getSel(){ return state.convs.find(function(c){ return c.id===state.selectedId; }); }
+
+/* ===================== ACCIONES ===================== */
+function dispatch(action, el){
+  switch(action){
+    case 'view-bandeja': state.view='bandeja'; break;
+    case 'view-mapa': state.view='mapa'; break;
+    case 'view-stats': state.view='stats'; break;
+    case 'view-agentes': state.view='agentes'; break;
+    case 'filter-tipo': state.filterTipo=el.getAttribute('data-val'); break;
+    case 'select-conv':
+      state.selectedId=el.getAttribute('data-id');
+      var c=getSel(); if(c) c.unread=false;
+      break;
+    case 'estado':
+      var s1=getSel(); if(s1) s1.estado=el.getAttribute('data-val');
+      break;
+    case 'tomar-caso':
+      var s2=getSel();
+      if(s2){ s2.agente='Of. Gutiérrez (Tú)'; s2.estado='En proceso'; s2.messages.push({from:'sistema',text:'Caso asignado a Of. Gutiérrez · '+now()}); }
+      break;
+    case 'send': sendMsg(); break;
+  }
+  render();
+}
+
+function sendMsg(){
+  var txt = (state.composer||'').trim(); if(!txt) return;
+  var s = getSel(); if(!s) return;
+  s.messages.push({from:'agente', text:txt, time:now()});
+  state.composer='';
+  state._focus='composer';
+}
+
+/* ===================== EVENTOS GLOBALES (delegación) ===================== */
+document.addEventListener('click', function(e){
+  var t = e.target.closest('[data-action]');
+  if(t){ dispatch(t.getAttribute('data-action'), t); }
+});
+document.addEventListener('input', function(e){
+  var f = e.target.getAttribute && e.target.getAttribute('data-field');
+  if(f==='search'){ state.search=e.target.value; state._focus='search'; render(); }
+  else if(f==='composer'){ state.composer=e.target.value; } // sin re-render para no perder foco
+});
+document.addEventListener('change', function(e){
+  var f = e.target.getAttribute && e.target.getAttribute('data-field');
+  if(f==='prioridad'){ state.filterPrioridad=e.target.value; render(); }
+  else if(f==='agente'){ var s=getSel(); if(s){ s.agente=e.target.value; if(s.agente!=='Sin asignar' && s.estado==='Nuevo') s.estado='En proceso'; } render(); }
+});
+document.addEventListener('keydown', function(e){
+  if(e.target.getAttribute && e.target.getAttribute('data-field')==='composer' && e.key==='Enter'){
+    e.preventDefault(); state.composer=e.target.value; sendMsg(); render();
+  }
+});
+
+/* ===================== RENDER: SHELL ===================== */
+function navItem(action, dot, label, active, badgeNum){
+  var hl = active ? '<span style="position:absolute;inset:0;background:rgba(91,141,239,.16);border-radius:9px"></span><span style="position:absolute;left:0;top:8px;bottom:8px;width:3px;background:#5b8def;border-radius:0 3px 3px 0"></span>' : '';
+  var bn = badgeNum!=null ? '<span style="position:relative;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:600;background:#c0392b;color:#fff;padding:1px 7px;border-radius:999px">'+badgeNum+'</span>' : '';
+  return '<button data-action="'+action+'" style="position:relative;display:flex;align-items:center;gap:11px;width:100%;border:none;background:transparent;color:#dbe4f3;text-align:left;padding:11px 12px;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:500">'
+    + hl
+    + '<span style="position:relative;width:8px;height:8px;border-radius:3px;background:'+dot+';flex-shrink:0"></span>'
+    + '<span style="position:relative;flex:1">'+label+'</span>'+bn+'</button>';
+}
+
+function renderShell(content){
+  var v=state.view;
+  var countNuevos = state.convs.filter(function(c){return c.estado==='Nuevo';}).length;
+  var titles={ bandeja:['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'], mapa:['Mapa de incidentes','Distribución geográfica de casos en Oruro'], stats:['Estadísticas','Indicadores de gestión del centro de atención'], agentes:['Agentes','Disponibilidad y carga de casos del personal'] };
+  var tt=titles[v];
+
+  return '<div style="height:100vh;display:flex;background:#eef1f6;color:#1a2433;overflow:hidden">'
+  + /* SIDEBAR */
+    '<aside style="width:252px;flex-shrink:0;background:linear-gradient(180deg,#0b2545 0%,#0a1f3c 100%);color:#dbe4f3;display:flex;flex-direction:column">'
+      + '<div style="padding:20px 20px 18px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.08)">'
+        + '<div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#2f6fed,#5b8def);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;letter-spacing:.5px;box-shadow:0 4px 14px rgba(47,111,237,.4)">PB</div>'
+        + '<div style="min-width:0"><div style="font-weight:700;font-size:14px;color:#fff;line-height:1.2">Policía Boliviana</div><div style="font-size:11px;color:#8aa0c0;margin-top:2px;letter-spacing:.3px">Comando Oruro · CAC</div></div>'
+      + '</div>'
+      + '<div style="padding:14px 12px;flex:1;display:flex;flex-direction:column;gap:3px">'
+        + '<div style="font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:6px 12px 8px">OPERACIÓN</div>'
+        + navItem('view-bandeja','#5b8def','Bandeja de atención', v==='bandeja', countNuevos)
+        + navItem('view-mapa','#3fae7a','Mapa de incidentes', v==='mapa', null)
+        + navItem('view-stats','#d6a23a','Estadísticas', v==='stats', null)
+        + navItem('view-agentes','#9b7fe0','Agentes', v==='agentes', null)
+        + '<div style="margin-top:auto;padding:14px 12px 6px"><div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px"><div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa0c0;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:#3fae7a;animation:livedot 1.8s infinite"></span>ASISTENTE IA ACTIVO</div><div style="font-size:11.5px;color:#aab8d0;margin-top:7px;line-height:1.5">Clasificando mensajes entrantes y resumiendo en tiempo real.</div></div></div>'
+      + '</div>'
+      + '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px"><div style="width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0">OG</div><div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Of. Gutiérrez</div><div style="font-size:11px;color:#8aa0c0">Operador · Turno A</div></div><span style="width:8px;height:8px;border-radius:50%;background:#3fae7a;flex-shrink:0"></span></div>'
+    + '</aside>'
+  + /* MAIN */
+    '<div style="flex:1;display:flex;flex-direction:column;min-width:0">'
+      + '<header style="height:62px;flex-shrink:0;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;padding:0 22px;gap:18px">'
+        + '<div style="min-width:0"><div style="font-size:16px;font-weight:700;color:#15233a;line-height:1.1">'+tt[0]+'</div><div style="font-size:12px;color:#7a8699;margin-top:1px">'+tt[1]+'</div></div>'
+        + '<div style="flex:1"></div>'
+        + '<div style="display:flex;align-items:center;gap:9px;background:#f1f4f9;border:1px solid #e3e8f0;border-radius:10px;padding:8px 13px;width:300px"><span style="width:14px;height:14px;border:2px solid #9aa6b6;border-radius:50%;flex-shrink:0"></span><input id="searchInput" data-field="search" value="'+esc(state.search)+'" placeholder="Buscar folio, ciudadano o delito…" style="border:none;background:transparent;outline:none;font-size:13px;color:#1a2433;width:100%" /></div>'
+        + '<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#5a6b82;background:#eaf6ef;border:1px solid #cdeada;padding:7px 12px;border-radius:10px"><span style="width:7px;height:7px;border-radius:50%;background:#1f8a5b;animation:livedot 1.8s infinite"></span><span style="font-weight:600;color:#1f8a5b">En línea</span></div>'
+      + '</header>'
+      + '<main style="flex:1;min-height:0;overflow:hidden">'+content+'</main>'
+    + '</div>'
+  + '</div>';
+}
+
+/* ===================== RENDER: BANDEJA ===================== */
+function chipStyle(active, fg){
+  return active
+    ? 'border:1px solid '+fg+';background:'+fg+';color:#fff;font-size:12px;font-weight:600;padding:6px 11px;border-radius:8px;cursor:pointer;display:inline-flex;gap:5px;align-items:center'
+    : 'border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:12px;font-weight:500;padding:6px 11px;border-radius:8px;cursor:pointer;display:inline-flex;gap:5px;align-items:center';
+}
+
+function renderBandeja(){
+  var convs=state.convs;
+  var counts={Todos:convs.length,Emergencia:0,Denuncia:0,Consulta:0};
+  convs.forEach(function(c){counts[c.tipo]++;});
+
+  var q=state.search.trim().toLowerCase();
+  var filtered=convs.filter(function(c){
+    if(state.filterTipo!=='Todos' && c.tipo!==state.filterTipo) return false;
+    if(state.filterPrioridad!=='Todas' && c.prioridad!==state.filterPrioridad) return false;
+    if(q){ var hay=(c.name+' '+c.id+' '+c.delito+' '+c.zona).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+    return true;
+  });
+
+  // LISTA
+  var listItems = filtered.map(function(c){
+    var tc=tipoCol(c.tipo), pc=prioCol(c.prioridad);
+    var selected=c.id===state.selectedId;
+    var rowStyle='padding:13px 15px;border-bottom:1px solid #f1f4f9;cursor:pointer;display:flex;flex-direction:column;gap:7px;'+(selected?'background:#f5f8ff;box-shadow:inset 3px 0 0 #2f6fed;':'background:#fff;');
+    return '<div data-action="select-conv" data-id="'+c.id+'" style="'+rowStyle+'">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+        + '<div style="'+avatarStyle(c.tipo)+'">'+c.initials+'</div>'
+        + '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px"><span style="font-weight:600;font-size:13.5px;color:#15233a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(c.name)+'</span>'+(c.unread?'<span style="width:7px;height:7px;border-radius:50%;background:#2f6fed;flex-shrink:0"></span>':'')+'</div><div style="font-size:11px;color:#9aa6b6;font-family:\'IBM Plex Mono\',monospace;margin-top:1px">'+c.id+' · '+c.channel+'</div></div>'
+        + '<span style="font-size:11px;color:#9aa6b6;flex-shrink:0">'+c.time+'</span>'
+      + '</div>'
+      + '<div style="font-size:12.5px;color:#5a6b82;line-height:1.45;margin-left:42px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">'+esc(c.preview)+'</div>'
+      + '<div style="display:flex;align-items:center;gap:6px;margin-left:42px;flex-wrap:wrap"><span style="'+badge(tc[0],tc[1])+'">'+c.tipo+'</span><span style="'+badge(pc[0],pc[1])+'">'+c.prioridad+'</span><span style="font-size:11px;color:#8a96a8">· '+c.zona+'</span></div>'
+    + '</div>';
+  }).join('');
+
+  var listaPane = '<section style="width:384px;flex-shrink:0;border-right:1px solid #e0e5ee;background:#fff;display:flex;flex-direction:column;min-height:0">'
+    + '<div style="padding:13px 14px;border-bottom:1px solid #eef1f6;display:flex;flex-direction:column;gap:11px">'
+      + '<div style="display:flex;gap:7px;flex-wrap:wrap">'
+        + '<button data-action="filter-tipo" data-val="Todos" style="'+chipStyle(state.filterTipo==='Todos','#13315c')+'">Todos <span style="opacity:.6">'+counts.Todos+'</span></button>'
+        + '<button data-action="filter-tipo" data-val="Emergencia" style="'+chipStyle(state.filterTipo==='Emergencia','#c0392b')+'">Emergencias <span style="opacity:.6">'+counts.Emergencia+'</span></button>'
+        + '<button data-action="filter-tipo" data-val="Denuncia" style="'+chipStyle(state.filterTipo==='Denuncia','#b9751a')+'">Denuncias <span style="opacity:.6">'+counts.Denuncia+'</span></button>'
+        + '<button data-action="filter-tipo" data-val="Consulta" style="'+chipStyle(state.filterTipo==='Consulta','#2f6fed')+'">Consultas <span style="opacity:.6">'+counts.Consulta+'</span></button>'
+      + '</div>'
+      + '<div style="display:flex;align-items:center;gap:9px"><span style="font-size:11.5px;color:#7a8699;font-weight:500">Prioridad</span>'
+        + '<select data-field="prioridad" style="flex:1;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;padding:6px 9px;font-size:12.5px;color:#1a2433;outline:none;cursor:pointer">'
+          + ['Todas','Alta','Media','Baja'].map(function(o){return '<option '+(state.filterPrioridad===o?'selected':'')+'>'+o+'</option>';}).join('')
+        + '</select></div>'
+    + '</div>'
+    + '<div style="flex:1;overflow:auto;min-height:0">'+(listItems||'<div style="padding:30px;text-align:center;color:#9aa6b6;font-size:13px">Sin resultados</div>')+'</div>'
+  + '</section>';
+
+  // CHAT
+  var sel=getSel();
+  var chatPane;
+  if(sel){
+    var tc=tipoCol(sel.tipo);
+    var meLabel={ ciudadano:'Ciudadano', bot:'Asistente IA · Bot', agente:(sel.agente==='Sin asignar'?'Operador':sel.agente) };
+    var msgs = sel.messages.map(function(m){
+      if(m.from==='sistema') return '<div style="display:flex;justify-content:center;margin:8px 0"><span style="font-size:11px;color:#7a8699;background:#e8edf4;padding:5px 14px;border-radius:999px;font-weight:500">'+esc(m.text)+'</span></div>';
+      var isAgent=m.from==='agente', isBot=m.from==='bot';
+      var align=isAgent?'flex-end':'flex-start';
+      var bubble = isAgent ? 'background:#13315c;color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;font-size:13.5px;line-height:1.5'
+        : isBot ? 'background:#eef3ff;color:#1a3057;border:1px solid #dbe6ff;border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:13.5px;line-height:1.5'
+        : 'background:#fff;color:#1a2433;border:1px solid #e6ebf2;border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:13.5px;line-height:1.5';
+      var showLabel=isBot||isAgent;
+      var labelColor=isAgent?'#2f6fed':isBot?'#5b6fa8':'#7a8699';
+      var ta=isAgent?'text-align:right':'';
+      return '<div style="display:flex;justify-content:'+align+'"><div style="max-width:76%;display:flex;flex-direction:column;gap:3px">'
+        + (showLabel?'<span style="font-size:11px;font-weight:600;color:'+labelColor+';'+ta+'">'+esc(meLabel[m.from])+'</span>':'')
+        + '<div style="'+bubble+'">'+esc(m.text)+'</div>'
+        + '<span style="font-size:10px;color:#9aa6b6;'+ta+'">'+(m.time||'')+'</span>'
+      + '</div></div>';
+    }).join('');
+
+    var headerRight = sel.agente==='Sin asignar'
+      ? '<button data-action="tomar-caso" style="border:none;background:#13315c;color:#fff;font-weight:600;font-size:13px;padding:9px 16px;border-radius:9px;cursor:pointer">Tomar caso</button>'
+      : '<div style="font-size:12px;color:#5a6b82;text-align:right">Atiende<br><span style="font-weight:600;color:#15233a">'+esc(sel.agente)+'</span></div>';
+
+    chatPane = '<section style="flex:1;min-width:0;display:flex;flex-direction:column;background:#f7f9fc;min-height:0">'
+      + '<div style="padding:13px 20px;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;gap:13px;flex-shrink:0">'
+        + '<div style="'+avatarStyle(sel.tipo)+'">'+sel.initials+'</div>'
+        + '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:9px"><span style="font-weight:700;font-size:15px;color:#15233a">'+esc(sel.name)+'</span><span style="'+badge(tc[0],tc[1])+'">'+sel.tipo+'</span></div><div style="font-size:12px;color:#7a8699;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">'+sel.id+' · '+sel.channel+' · '+esc(sel.delito)+'</div></div>'
+        + headerRight
+      + '</div>'
+      + '<div id="thread" style="flex:1;overflow:auto;min-height:0;padding:20px 22px;display:flex;flex-direction:column;gap:3px">'+msgs+'</div>'
+      + '<div style="padding:13px 18px;background:#fff;border-top:1px solid #e0e5ee;flex-shrink:0">'
+        + '<div style="display:flex;align-items:flex-end;gap:10px;background:#f1f4f9;border:1px solid #e3e8f0;border-radius:13px;padding:8px 10px 8px 15px">'
+          + '<input id="composerInput" data-field="composer" value="'+esc(state.composer)+'" placeholder="Escribe una respuesta al ciudadano…" style="flex:1;border:none;background:transparent;outline:none;font-size:13.5px;color:#1a2433;padding:6px 0" />'
+          + '<button data-action="send" style="border:none;background:#2f6fed;color:#fff;font-weight:600;font-size:13px;padding:9px 18px;border-radius:9px;cursor:pointer;flex-shrink:0">Enviar</button>'
+        + '</div>'
+        + '<div style="font-size:11px;color:#9aa6b6;margin-top:7px;padding-left:4px">El asistente IA seguirá clasificando la conversación automáticamente.</div>'
+      + '</div>'
+    + '</section>';
+  } else {
+    chatPane = '<section style="flex:1;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:14px;background:#f7f9fc">Selecciona una conversación de la bandeja</section>';
+  }
+
+  // PANEL CASO / IA
+  var casoPane='';
+  if(sel){
+    var tcc=tipoCol(sel.tipo), pcc=prioCol(sel.prioridad);
+    var puntos = sel.aiPuntos.map(function(p){ return '<div style="display:flex;gap:9px;align-items:flex-start"><span style="width:6px;height:6px;border-radius:50%;background:#2f6fed;margin-top:6px;flex-shrink:0"></span><span style="font-size:12.5px;color:#33405a;line-height:1.5">'+esc(p)+'</span></div>'; }).join('');
+    var evid = sel.evidencia.map(function(e){ return '<div style="aspect-ratio:1;border-radius:9px;border:1px solid #e3e8f0;background-image:repeating-linear-gradient(45deg,#f1f4f9 0 7px,#e9eef5 7px 14px);display:flex;align-items:flex-end;padding:6px"><span style="font-size:9.5px;color:#7a8699;font-family:\'IBM Plex Mono\',monospace;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:4px">'+esc(e)+'</span></div>'; }).join('')
+      + '<div style="aspect-ratio:1;border-radius:9px;border:1.5px dashed #cdd5e2;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:22px;cursor:pointer">+</div>';
+    var estBtn=function(label){
+      var active=sel.estado===label, c=estCol(label);
+      return '<button data-action="estado" data-val="'+label+'" style="'+(active?'flex:1;border:1px solid '+c[0]+';background:'+c[1]+';color:'+c[0]+';font-weight:600;font-size:11.5px;padding:8px 4px;border-radius:8px;cursor:pointer':'flex:1;border:1px solid #e3e8f0;background:#fff;color:#7a8699;font-weight:500;font-size:11.5px;padding:8px 4px;border-radius:8px;cursor:pointer')+'">'+label+'</button>';
+    };
+    var agOpts=['Sin asignar','Sgto. Flores','Cabo Choque','Sgto. Mamani','Of. Gutiérrez (Tú)'].map(function(a){return '<option '+(sel.agente===a?'selected':'')+'>'+a+'</option>';}).join('');
+
+    casoPane = '<aside style="width:366px;flex-shrink:0;border-left:1px solid #e0e5ee;background:#fff;overflow:auto;min-height:0">'
+      + '<div style="padding:18px 18px 16px;border-bottom:1px solid #eef1f6">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:13px"><span style="width:9px;height:9px;border-radius:3px;background:linear-gradient(135deg,#2f6fed,#5b8def)"></span><span style="font-size:13px;font-weight:700;color:#15233a;letter-spacing:.2px">Análisis del asistente IA</span></div>'
+        + '<div style="background:#f5f8ff;border:1px solid #dde8ff;border-radius:11px;padding:13px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px"><span style="'+badge(tcc[0],tcc[1])+'">'+sel.tipo+' detectada</span><span style="font-size:11px;color:#5a6b82;font-weight:600">'+sel.aiConfidence+'% confianza</span></div>'
+          + '<div style="height:5px;background:#e3ebfa;border-radius:999px;overflow:hidden;margin-bottom:13px"><div style="height:100%;width:'+sel.aiConfidence+'%;background:linear-gradient(90deg,#2f6fed,#5b8def);border-radius:999px"></div></div>'
+          + '<div style="font-size:11px;font-weight:600;color:#64769a;letter-spacing:.4px;margin-bottom:8px">PUNTOS CLAVE DEL MENSAJE</div>'
+          + '<div style="display:flex;flex-direction:column;gap:8px">'+puntos+'</div>'
+          + '<div style="margin-top:13px;padding-top:12px;border-top:1px dashed #dde8ff"><div style="font-size:11px;font-weight:600;color:#64769a;letter-spacing:.4px;margin-bottom:7px">RECOMENDACIÓN</div><div style="font-size:12.5px;color:#33405a;line-height:1.55;background:'+tcc[1]+';border-left:3px solid '+tcc[0]+';padding:9px 11px;border-radius:0 8px 8px 0">'+esc(sel.recomendacion)+'</div></div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="padding:18px;border-bottom:1px solid #eef1f6">'
+        + '<div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:14px">Datos del caso</div>'
+        + '<div style="display:flex;flex-direction:column;gap:13px">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Folio</span><span style="font-size:12.5px;font-weight:600;color:#15233a;font-family:\'IBM Plex Mono\',monospace">'+sel.id+'</span></div>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Tipo de delito</span><span style="font-size:12.5px;font-weight:600;color:#15233a">'+esc(sel.delito)+'</span></div>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Zona</span><span style="font-size:12.5px;font-weight:600;color:#15233a">'+sel.zona+'</span></div>'
+          + '<div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:12.5px;color:#7a8699">Prioridad</span><span style="'+badge(pcc[0],pcc[1])+'">'+sel.prioridad+'</span></div>'
+          + '<div><div style="font-size:12.5px;color:#7a8699;margin-bottom:8px">Estado del caso</div><div style="display:flex;gap:6px">'+estBtn('Nuevo')+estBtn('En proceso')+estBtn('Cerrado')+'</div></div>'
+          + '<div><div style="font-size:12.5px;color:#7a8699;margin-bottom:8px">Agente asignado</div><select data-field="agente" style="width:100%;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:9px;padding:9px 11px;font-size:13px;color:#15233a;outline:none;cursor:pointer;font-weight:500">'+agOpts+'</select></div>'
+        + '</div>'
+      + '</div>'
+      + '<div style="padding:18px;border-bottom:1px solid #eef1f6"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:13px">Evidencia adjunta</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+evid+'</div></div>'
+      + '<div style="padding:18px"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:13px">Ubicación reportada</div>'
+        + '<div style="height:120px;border-radius:11px;border:1px solid #e3e8f0;background-image:repeating-linear-gradient(0deg,#eef3f9 0 22px,#e6edf5 22px 23px),repeating-linear-gradient(90deg,#eef3f9 0 22px,#e6edf5 22px 23px);position:relative;overflow:hidden"><span style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#c0392b;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);animation:pulsedot 2s infinite"></span><span style="position:absolute;left:10px;bottom:9px;font-size:10px;color:#5a6b82;font-family:\'IBM Plex Mono\',monospace;background:rgba(255,255,255,.9);padding:2px 7px;border-radius:5px">'+sel.zona+' · '+sel.coords+'</span></div>'
+        + '<div style="display:flex;gap:8px;margin-top:14px"><button data-action="view-mapa" style="flex:1;border:1px solid #e3e8f0;background:#fff;color:#33405a;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Ver en mapa</button><button style="flex:1;border:none;background:#13315c;color:#fff;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Generar folio PDF</button></div>'
+      + '</div>'
+    + '</aside>';
+  }
+
+  return '<div style="height:100%;display:flex">'+listaPane+chatPane+casoPane+'</div>';
+}
+
+/* ===================== RENDER: ESTADISTICAS ===================== */
+function renderStats(){
+  var kpis=[
+    {label:'Casos hoy', value:'47', sub:'▲ +8 vs ayer', col:'#1f8a5b'},
+    {label:'Emergencias activas', value:'5', sub:'2 sin asignar', col:'#c0392b'},
+    {label:'Tiempo prom. respuesta', value:'3m 12s', sub:'▼ −14% esta semana', col:'#1f8a5b'},
+    {label:'Tasa de resolución', value:'82%', sub:'meta 85%', col:'#b9751a'}
+  ].map(function(k){ return '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,30,54,.04)"><div style="font-size:12.5px;color:#7a8699;font-weight:500">'+k.label+'</div><div style="font-size:30px;font-weight:700;color:#15233a;margin:8px 0 4px;letter-spacing:-.5px">'+k.value+'</div><div style="font-size:12px;font-weight:600;color:'+k.col+'">'+k.sub+'</div></div>'; }).join('');
+
+  var legend=[['Denuncias',52,'#b9751a'],['Consultas',33,'#2f6fed'],['Emergencias',15,'#c0392b']].map(function(d){ return '<div style="display:flex;align-items:center;gap:10px"><span style="width:11px;height:11px;border-radius:3px;background:'+d[2]+';flex-shrink:0"></span><span style="font-size:13px;color:#33405a;flex:1">'+d[0]+'</span><span style="font-size:13px;font-weight:700;color:#15233a">'+d[1]+'%</span></div>'; }).join('');
+
+  var zonaData=[['Centro',38],['Sud',27],['Norte',19],['Este',14],['Cívica',9]]; var zmax=38;
+  var bars=zonaData.map(function(z){ var h=Math.round(z[1]/zmax*150)+8; return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:9px;height:100%;justify-content:flex-end"><span style="font-size:12px;font-weight:700;color:#15233a">'+z[1]+'</span><div style="width:100%;max-width:46px;height:'+h+'px;background:linear-gradient(180deg,#5b8def,#2f6fed);border-radius:7px 7px 3px 3px"></div><span style="font-size:11.5px;color:#7a8699">'+z[0]+'</span></div>'; }).join('');
+
+  var delitoData=[['Robo a propiedad',41],['Violencia intrafamiliar',28],['Robo de vehículo',17],['Accidente de tránsito',12],['Estafa',9]]; var dmax=41;
+  var delitos=delitoData.map(function(t){ var w=Math.round(t[1]/dmax*100); return '<div style="display:flex;align-items:center;gap:14px"><span style="width:170px;font-size:13px;color:#33405a;flex-shrink:0">'+t[0]+'</span><div style="flex:1;height:9px;background:#eef1f6;border-radius:999px;overflow:hidden"><div style="height:100%;width:'+w+'%;background:linear-gradient(90deg,#2f6fed,#5b8def);border-radius:999px"></div></div><span style="width:34px;text-align:right;font-size:13px;font-weight:700;color:#15233a">'+t[1]+'</span></div>'; }).join('');
+
+  return '<div style="height:100%;overflow:auto;padding:24px 28px">'
+    + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px">'+kpis+'</div>'
+    + '<div style="display:grid;grid-template-columns:1.1fr 1.4fr;gap:16px;margin-bottom:16px">'
+      + '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:20px"><div style="font-size:14px;font-weight:700;color:#15233a;margin-bottom:18px">Distribución por tipo</div><div style="display:flex;align-items:center;gap:26px"><div style="width:148px;height:148px;border-radius:50%;flex-shrink:0;position:relative;background:conic-gradient(#b9751a 0 52%,#2f6fed 52% 85%,#c0392b 85% 100%)"><div style="position:absolute;inset:26px;background:#fff;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font-size:24px;font-weight:700;color:#15233a">312</span><span style="font-size:11px;color:#7a8699">este mes</span></div></div><div style="display:flex;flex-direction:column;gap:13px;flex:1">'+legend+'</div></div></div>'
+      + '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:20px"><div style="font-size:14px;font-weight:700;color:#15233a;margin-bottom:20px">Casos por zona</div><div style="display:flex;align-items:flex-end;gap:18px;height:176px;padding:0 6px">'+bars+'</div></div>'
+    + '</div>'
+    + '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;padding:20px"><div style="font-size:14px;font-weight:700;color:#15233a;margin-bottom:16px">Delitos más reportados</div><div style="display:flex;flex-direction:column;gap:14px">'+delitos+'</div></div>'
+  + '</div>';
+}
+
+/* ===================== RENDER: MAPA ===================== */
+function renderMapa(){
+  var pinData=[[42,38,'#c0392b'],[58,52,'#b9751a'],[30,60,'#2f6fed'],[68,30,'#c0392b'],[50,72,'#b9751a'],[75,62,'#2f6fed'],[38,22,'#b9751a']];
+  var pins=pinData.map(function(p){ var anim=p[2]==='#c0392b'?'animation:pulsedot 2s infinite;':''; return '<span style="position:absolute;left:'+p[0]+'%;top:'+p[1]+'%;width:15px;height:15px;border-radius:50%;background:'+p[2]+';border:3px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.28);transform:translate(-50%,-50%);'+anim+'"></span>'; }).join('');
+  var zonaList=[
+    ['Centro','2 emergencias · 6 denuncias',12,'#c0392b'],
+    ['Zona Sud','1 emergencia · 5 denuncias',9,'#b9751a'],
+    ['Zona Norte','3 consultas · 2 denuncias',6,'#2f6fed'],
+    ['Zona Este','1 emergencia · 3 denuncias',5,'#b9751a'],
+    ['Av. Cívica','1 emergencia · 1 denuncia',3,'#c0392b']
+  ].map(function(z){ return '<div style="display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid #eef1f6;border-radius:11px"><span style="width:10px;height:10px;border-radius:50%;background:'+z[3]+';flex-shrink:0"></span><div style="flex:1"><div style="font-size:13.5px;font-weight:600;color:#15233a">'+z[0]+'</div><div style="font-size:11.5px;color:#7a8699">'+z[1]+'</div></div><span style="font-size:18px;font-weight:700;color:#15233a">'+z[2]+'</span></div>'; }).join('');
+  var activos=state.convs.filter(function(c){return c.estado!=='Cerrado';}).length;
+
+  return '<div style="height:100%;display:flex">'
+    + '<div style="flex:1;position:relative;background-image:repeating-linear-gradient(0deg,#e7eef6 0 40px,#e1e9f3 40px 41px),repeating-linear-gradient(90deg,#e7eef6 0 40px,#e1e9f3 40px 41px);min-width:0;overflow:hidden">'
+      + '<div style="position:absolute;left:18px;top:18px;background:rgba(255,255,255,.95);border:1px solid #e0e5ee;border-radius:11px;padding:13px 16px;box-shadow:0 4px 14px rgba(16,30,54,.08)"><div style="font-size:14px;font-weight:700;color:#15233a">Mapa de incidentes — Oruro</div><div style="font-size:11.5px;color:#7a8699;margin-top:2px">Incidentes activos en tiempo real · '+activos+' casos</div></div>'
+      + pins
+      + '<div style="position:absolute;right:18px;bottom:18px;background:rgba(255,255,255,.95);border:1px solid #e0e5ee;border-radius:11px;padding:12px 15px;display:flex;flex-direction:column;gap:9px"><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#33405a"><span style="width:10px;height:10px;border-radius:50%;background:#c0392b"></span>Emergencia</div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#33405a"><span style="width:10px;height:10px;border-radius:50%;background:#b9751a"></span>Denuncia</div><div style="display:flex;align-items:center;gap:8px;font-size:12px;color:#33405a"><span style="width:10px;height:10px;border-radius:50%;background:#2f6fed"></span>Consulta</div></div>'
+    + '</div>'
+    + '<aside style="width:330px;flex-shrink:0;border-left:1px solid #e0e5ee;background:#fff;overflow:auto;padding:20px"><div style="font-size:14px;font-weight:700;color:#15233a;margin-bottom:16px">Incidentes por zona</div><div style="display:flex;flex-direction:column;gap:10px">'+zonaList+'</div></aside>'
+  + '</div>';
+}
+
+/* ===================== RENDER: AGENTES ===================== */
+function renderAgentes(){
+  function agEstado(e){ var m={Disponible:['#1f8a5b','#e6f5ee'],Ocupado:['#b9751a','#fbf1e0'],'Fuera de servicio':['#5a6b82','#eef1f6']}; var c=m[e]; return badge(c[0],c[1]); }
+  var rows=[
+    ['SF','Sgto. Flores','Sargento','Centro',4,'Disponible'],
+    ['CC','Cabo Choque','Cabo','Zona Este',6,'Ocupado'],
+    ['SM','Sgto. Mamani','Sargento','Zona Sud',3,'Disponible'],
+    ['OG','Of. Gutiérrez (Tú)','Oficial','Zona Norte',5,'Ocupado'],
+    ['OS','Of. Salinas','Oficial','Av. Cívica',0,'Fuera de servicio']
+  ].map(function(a){ return '<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr;padding:15px 20px;border-bottom:1px solid #f1f4f9;align-items:center"><div style="display:flex;align-items:center;gap:11px"><div style="width:36px;height:36px;border-radius:50%;background:#e7f0ff;color:#2f6fed;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;flex-shrink:0">'+a[0]+'</div><span style="font-size:13.5px;font-weight:600;color:#15233a">'+a[1]+'</span></div><span style="font-size:13px;color:#5a6b82">'+a[2]+'</span><span style="font-size:13px;color:#5a6b82">'+a[3]+'</span><span style="font-size:13px;color:#15233a;font-weight:600">'+a[4]+'</span><span><span style="'+agEstado(a[5])+'">'+a[5]+'</span></span></div>'; }).join('');
+
+  return '<div style="height:100%;overflow:auto;padding:24px 28px"><div style="background:#fff;border:1px solid #e6ebf2;border-radius:14px;overflow:hidden"><div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr;padding:14px 20px;background:#f7f9fc;border-bottom:1px solid #eef1f6;font-size:11.5px;font-weight:600;color:#7a8699;letter-spacing:.4px"><span>AGENTE</span><span>RANGO</span><span>ZONA</span><span>CASOS ACTIVOS</span><span>ESTADO</span></div>'+rows+'</div></div>';
+}
+
+/* ===================== RENDER PRINCIPAL ===================== */
+function render(){
+  var content;
+  if(state.view==='bandeja') content=renderBandeja();
+  else if(state.view==='stats') content=renderStats();
+  else if(state.view==='mapa') content=renderMapa();
+  else content=renderAgentes();
+
+  document.getElementById('app').innerHTML = renderShell(content);
+
+  // scroll del hilo al final
+  var th=document.getElementById('thread'); if(th){ th.scrollTop=th.scrollHeight; }
+
+  // restaurar foco
+  if(state._focus==='search'){ var si=document.getElementById('searchInput'); if(si){ si.focus(); var n=si.value.length; si.setSelectionRange(n,n); } }
+  else if(state._focus==='composer'){ var ci=document.getElementById('composerInput'); if(ci){ ci.focus(); var m=ci.value.length; ci.setSelectionRange(m,m); } }
+  state._focus=null;
+}
+
+render();
+</script>
+</body>
+</html>
