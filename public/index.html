@@ -92,6 +92,25 @@ socket.on('conversation:updated', function(conv) {
   render();
 });
 
+socket.on('conversation:deleted', function(data) {
+  state.convs = state.convs.filter(function(c){ return c.id !== data.id; });
+  if (state.selectedId === data.id) state.selectedId = null;
+  render();
+});
+
+socket.on('store:cleared', function() {
+  state.convs = [];
+  state.selectedId = null;
+  render();
+});
+
+socket.on('conversations:demo-cleared', function(data) {
+  var ids = data.ids || [];
+  state.convs = state.convs.filter(function(c){ return ids.indexOf(c.id) === -1; });
+  if (ids.indexOf(state.selectedId) !== -1) state.selectedId = null;
+  render();
+});
+
 socket.on('whatsapp:qr', function(data) {
   state.waStatus = 'qr';
   state.qrDataUrl = data.qrDataUrl;
@@ -126,6 +145,7 @@ function dispatch(action, el){
       render(); break;
     case 'estado': apiPatch(getSel(), {estado: el.getAttribute('data-val')}); break;
     case 'tomar-caso': apiTomar(getSel()); break;
+    case 'eliminar-caso': apiDelete(getSel()); break;
     case 'send': apiSend(); break;
   }
 }
@@ -153,6 +173,20 @@ function apiTomar(conv) {
     updateConvInState(updated);
     render();
   });
+}
+
+function apiDelete(conv) {
+  if (!conv) return;
+  if (!confirm('¿Eliminar el caso ' + conv.id + '? Esta acción no se puede deshacer desde el panel.')) return;
+  fetch('/api/conversations/' + conv.id, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.ok) {
+        state.convs = state.convs.filter(function(c){ return c.id !== conv.id; });
+        if (state.selectedId === conv.id) state.selectedId = null;
+        render();
+      }
+    });
 }
 
 function apiSend() {
@@ -307,6 +341,38 @@ function renderBandeja(){
   if(sel){
     var tc=tipoCol(sel.tipo);
     var meLabel={ ciudadano:'Ciudadano', bot:'Asistente IA · Bot', agente:(sel.agente==='Sin asignar'?'Operador':sel.agente) };
+    function renderMsgContent(m, bubble) {
+      var t = m.type || 'text';
+      var inner = '';
+      if (t === 'image' && m.mediaUrl) {
+        inner = '<a href="'+esc(m.mediaUrl)+'" target="_blank" style="display:block">'
+          + '<img src="'+esc(m.mediaUrl)+'" style="max-width:220px;max-height:260px;border-radius:10px;display:block;cursor:zoom-in" onerror="this.style.display=\'none\'" />'
+          + '</a>';
+        if (m.text) inner += '<div style="margin-top:6px;font-size:13px">'+esc(m.text)+'</div>';
+      } else if (t === 'video' && m.mediaUrl) {
+        inner = '<video src="'+esc(m.mediaUrl)+'" controls style="max-width:220px;border-radius:10px;display:block"></video>';
+        if (m.text) inner += '<div style="margin-top:6px;font-size:13px">'+esc(m.text)+'</div>';
+      } else if (t === 'audio' && m.mediaUrl) {
+        inner = '<div style="font-size:12px;margin-bottom:6px;opacity:.75">'+esc(m.text||'Audio')+'</div>'
+          + '<audio src="'+esc(m.mediaUrl)+'" controls style="width:200px;height:36px"></audio>';
+      } else if (t === 'document' && m.mediaUrl) {
+        inner = '<a href="'+esc(m.mediaUrl)+'" target="_blank" download style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit">'
+          + '<span style="font-size:22px">📄</span>'
+          + '<span style="font-size:13px;text-decoration:underline">'+esc(m.text||'Archivo')+'</span>'
+          + '</a>';
+      } else if (t === 'location' && m.lat !== undefined) {
+        var mapsUrl = 'https://maps.google.com/?q='+m.lat+','+m.lng;
+        inner = '<a href="'+mapsUrl+'" target="_blank" style="display:flex;align-items:center;gap:9px;text-decoration:none;color:inherit">'
+          + '<span style="font-size:28px;line-height:1">📍</span>'
+          + '<div><div style="font-size:13px;font-weight:600">Ubicación compartida</div>'
+          + '<div style="font-size:11px;opacity:.7;margin-top:2px">'+m.lat.toFixed(5)+', '+m.lng.toFixed(5)+'</div>'
+          + '<div style="font-size:11px;color:#2f6fed;margin-top:2px">Ver en Google Maps ↗</div></div>'
+          + '</a>';
+      } else {
+        inner = '<span style="white-space:pre-wrap">'+esc(m.text||'')+'</span>';
+      }
+      return '<div style="'+bubble+'">'+inner+'</div>';
+    }
     var msgs = sel.messages.map(function(m){
       if(m.from==='sistema') return '<div style="display:flex;justify-content:center;margin:8px 0"><span style="font-size:11px;color:#7a8699;background:#e8edf4;padding:5px 14px;border-radius:999px;font-weight:500">'+esc(m.text)+'</span></div>';
       var isAgent=m.from==='agente', isBot=m.from==='bot';
@@ -319,7 +385,7 @@ function renderBandeja(){
       var ta=isAgent?'text-align:right':'';
       return '<div style="display:flex;justify-content:'+align+'"><div style="max-width:76%;display:flex;flex-direction:column;gap:3px">'
         + (showLabel?'<span style="font-size:11px;font-weight:600;color:'+labelColor+';'+ta+'">'+esc(meLabel[m.from]||m.from)+'</span>':'')
-        + '<div style="'+bubble+'">'+esc(m.text)+'</div>'
+        + renderMsgContent(m, bubble)
         + '<span style="font-size:10px;color:#9aa6b6;'+ta+'">'+(m.time||'')+'</span>'
       + '</div></div>';
     }).join('');
@@ -331,7 +397,7 @@ function renderBandeja(){
     chatPane = '<section style="flex:1;min-width:0;display:flex;flex-direction:column;background:#f7f9fc;min-height:0">'
       + '<div style="padding:13px 20px;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;gap:13px;flex-shrink:0">'
         + '<div style="'+avatarStyle(sel.tipo)+'">'+esc(sel.initials)+'</div>'
-        + '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:9px"><span style="font-weight:700;font-size:15px;color:#15233a">'+esc(sel.name)+'</span><span style="'+badge(tc[0],tc[1])+'">'+esc(sel.tipo)+'</span></div><div style="font-size:12px;color:#7a8699;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">'+esc(sel.id)+' · '+esc(sel.channel)+' · '+esc(sel.delito)+'</div></div>'
+        + '<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:9px"><span style="font-weight:700;font-size:15px;color:#15233a">'+esc(sel.name)+'</span><span style="'+badge(tc[0],tc[1])+'">'+esc(sel.tipo)+'</span></div><div style="font-size:12px;color:#7a8699;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">'+esc(sel.id)+' · '+esc(sel.channel)+(sel.phone?' · +'+esc(sel.phone):'')+' · '+esc(sel.delito)+'</div></div>'
         + headerRight
       + '</div>'
       + '<div id="thread" style="flex:1;overflow:auto;min-height:0;padding:20px 22px;display:flex;flex-direction:column;gap:3px">'+msgs+'</div>'
@@ -351,7 +417,20 @@ function renderBandeja(){
   if(sel){
     var tcc=tipoCol(sel.tipo), pcc=prioCol(sel.prioridad);
     var puntos = (sel.aiPuntos||[]).map(function(p){ return '<div style="display:flex;gap:9px;align-items:flex-start"><span style="width:6px;height:6px;border-radius:50%;background:#2f6fed;margin-top:6px;flex-shrink:0"></span><span style="font-size:12.5px;color:#33405a;line-height:1.5">'+esc(p)+'</span></div>'; }).join('') || '<div style="font-size:12.5px;color:#9aa6b6">Analizando conversación...</div>';
-    var evid = (sel.evidencia||[]).map(function(e){ return '<div style="aspect-ratio:1;border-radius:9px;border:1px solid #e3e8f0;background-image:repeating-linear-gradient(45deg,#f1f4f9 0 7px,#e9eef5 7px 14px);display:flex;align-items:flex-end;padding:6px"><span style="font-size:9.5px;color:#7a8699;font-family:\'IBM Plex Mono\',monospace;background:rgba(255,255,255,.85);padding:1px 4px;border-radius:4px">'+esc(e)+'</span></div>'; }).join('')
+    var evid = (sel.evidencia||[]).map(function(e){
+      var isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(e);
+      var label = e.startsWith('/') ? e.split('/').pop() : e;
+      if (isImg) {
+        return '<a href="'+esc(e)+'" target="_blank" style="aspect-ratio:1;border-radius:9px;border:1px solid #e3e8f0;overflow:hidden;display:block">'
+          + '<img src="'+esc(e)+'" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.display=\'none\'" />'
+          + '</a>';
+      }
+      var icon = /\.mp4$/i.test(e)?'🎥':/\.(ogg|mp3|m4a)$/i.test(e)?'🎤':/\.pdf$/i.test(e)?'📄':'📎';
+      return '<div style="aspect-ratio:1;border-radius:9px;border:1px solid #e3e8f0;background:#f7f9fc;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px;overflow:hidden">'
+        + '<span style="font-size:22px">'+icon+'</span>'
+        + '<span style="font-size:9px;color:#7a8699;font-family:\'IBM Plex Mono\',monospace;text-align:center;word-break:break-all;line-height:1.2">'+esc(label)+'</span>'
+        + '</div>';
+    }).join('')
       + '<div style="aspect-ratio:1;border-radius:9px;border:1.5px dashed #cdd5e2;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:22px;cursor:pointer">+</div>';
     var estBtn=function(label){
       var active=sel.estado===label, c=estCol(label);
@@ -388,6 +467,9 @@ function renderBandeja(){
       + '<div style="padding:18px"><div style="font-size:13px;font-weight:700;color:#15233a;margin-bottom:13px">Ubicación reportada</div>'
         + '<div style="height:120px;border-radius:11px;border:1px solid #e3e8f0;background-image:repeating-linear-gradient(0deg,#eef3f9 0 22px,#e6edf5 22px 23px),repeating-linear-gradient(90deg,#eef3f9 0 22px,#e6edf5 22px 23px);position:relative;overflow:hidden"><span style="position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#c0392b;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);animation:pulsedot 2s infinite"></span><span style="position:absolute;left:10px;bottom:9px;font-size:10px;color:#5a6b82;font-family:\'IBM Plex Mono\',monospace;background:rgba(255,255,255,.9);padding:2px 7px;border-radius:5px">'+esc(sel.zona)+' · '+esc(sel.coords||'—')+'</span></div>'
         + '<div style="display:flex;gap:8px;margin-top:14px"><button data-action="view-mapa" style="flex:1;border:1px solid #e3e8f0;background:#fff;color:#33405a;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Ver en mapa</button><button style="flex:1;border:none;background:#13315c;color:#fff;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Generar folio PDF</button></div>'
+      + '</div>'
+      + '<div style="padding:14px 18px;border-top:1px solid #eef1f6">'
+        + '<button data-action="eliminar-caso" style="width:100%;border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer">Eliminar caso</button>'
       + '</div>'
     + '</aside>';
   }
@@ -501,9 +583,11 @@ function renderWhatsapp(){
     + '</div>';
   }
 
-  var resetBtn = '<div style="margin-top:22px">'
-    + '<button onclick="waReset()" style="border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:13px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">Borrar sesión y pedir nuevo QR</button>'
-    + '<span style="font-size:12px;color:#9aa6b6;margin-left:12px">Úsalo si el QR no carga o la sesión quedó corrupta</span>'
+  var resetBtn = '<div style="margin-top:22px;display:flex;flex-direction:column;gap:12px">'
+    + '<div><button onclick="waReset()" style="border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:13px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">Borrar sesión y pedir nuevo QR</button>'
+    + '<span style="font-size:12px;color:#9aa6b6;margin-left:12px">Úsalo si el QR no carga o la sesión quedó corrupta</span></div>'
+    + '<div><button onclick="dbTruncate()" style="border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-size:13px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">Limpiar base de datos</button>'
+    + '<span style="font-size:12px;color:#9aa6b6;margin-left:12px">Borra todas las conversaciones y mensajes. No reversible.</span></div>'
   + '</div>';
 
   return '<div style="height:100%;overflow:auto;padding:32px 36px">'
@@ -569,6 +653,21 @@ function waReset() {
       state.waStatus = 'connecting';
       state.qrDataUrl = null;
       render();
+    });
+}
+
+function dbTruncate() {
+  if (!confirm('¿Eliminar TODAS las conversaciones y mensajes de la base de datos? Esta acción no se puede deshacer.')) return;
+  fetch('/api/db/truncate', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.ok) {
+        state.convs = [];
+        state.selectedId = null;
+        render();
+      } else {
+        alert('Error: ' + (res.error || 'desconocido'));
+      }
     });
 }
 

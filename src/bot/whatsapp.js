@@ -3,7 +3,8 @@ const {
   DisconnectReason,
   useMultiFileAuthState,
   makeCacheableSignalKeyStore,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  downloadMediaMessage
 } = require('@whiskeysockets/baileys');
 const qrTerminal = require('qrcode-terminal');
 const QRCode = require('qrcode');
@@ -14,8 +15,11 @@ const store = require('../store/conversations');
 const { analyzeConversation, generateBotResponse } = require('./claude');
 const db = require('../db/service');
 
-const authPath = path.join(__dirname, '../../.baileys_auth');
-const logger = pino({ level: 'silent' });
+const authPath  = path.join(__dirname, '../../.baileys_auth');
+const mediaDir  = path.join(__dirname, '../../public/media');
+const logger    = pino({ level: 'silent' });
+
+if (!fs.existsSync(mediaDir)) fs.mkdirSync(mediaDir, { recursive: true });
 
 let sock = null;
 let ioRef = null;
@@ -131,78 +135,204 @@ function clearAuthFolder() {
   }
 }
 
-async function handleIncoming(msg) {
-  const jid = msg.key.remoteJid;
-  console.log(`\n[MSG] jid: ${jid}`);
+// Descarga un buffer de media y lo guarda en public/media/
+async function saveMedia(msg, ext) {
+  try {
+    const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+    const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    fs.writeFileSync(path.join(mediaDir, filename), buffer);
+    return `/media/${filename}`;
+  } catch (err) {
+    console.error('[MEDIA] Error descargando:', err.message);
+    return null;
+  }
+}
 
-  if (!jid || jid.endsWith('@g.us')) {
-    console.log(`[MSG] ignorado — es grupo o jid vacío`);
-    return;
+// Extrae el contenido de cualquier tipo de mensaje WA
+async function extractContent(msg) {
+  const m = msg.message || {};
+
+  // Texto plano
+  if (m.conversation)
+    return { type: 'text', text: m.conversation };
+
+  // Texto extendido (links, respuestas, etc.)
+  if (m.extendedTextMessage?.text)
+    return { type: 'text', text: m.extendedTextMessage.text };
+
+  // Imagen
+  if (m.imageMessage) {
+    const mediaUrl = await saveMedia(msg, 'jpg');
+    return { type: 'image', text: m.imageMessage.caption || '', mediaUrl };
   }
 
-  const phone = jid.replace('@s.whatsapp.net', '');
-  const text =
-    msg.message?.conversation ||
-    msg.message?.extendedTextMessage?.text ||
-    msg.message?.imageMessage?.caption ||
-    '';
+  // Video
+  if (m.videoMessage) {
+    const mediaUrl = await saveMedia(msg, 'mp4');
+    return { type: 'video', text: m.videoMessage.caption || '', mediaUrl };
+  }
 
-  console.log(`[MSG] teléfono: ${phone}`);
-  console.log(`[MSG] texto: "${text}"`);
-  console.log(`[MSG] tipo de mensaje:`, Object.keys(msg.message || {}));
+  // Audio / voz
+  if (m.audioMessage) {
+    const isPtt = m.audioMessage.ptt;
+    const mediaUrl = await saveMedia(msg, 'ogg');
+    return { type: 'audio', text: isPtt ? '🎤 Nota de voz' : '🎵 Audio', mediaUrl };
+  }
 
-  if (!text) {
-    console.log(`[MSG] ignorado — sin texto (puede ser imagen, audio, sticker, etc.)`);
+  // Documento
+  if (m.documentMessage) {
+    const ext = m.documentMessage.fileName?.split('.').pop() || 'bin';
+    const mediaUrl = await saveMedia(msg, ext);
+    return { type: 'document', text: m.documentMessage.fileName || 'Archivo', mediaUrl };
+  }
+
+  // Ubicación
+  if (m.locationMessage) {
+    const { degreesLatitude: lat, degreesLongitude: lng } = m.locationMessage;
+    return { type: 'location', text: '📍 Ubicación compartida', lat, lng };
+  }
+
+  // Ubicación en vivo
+  if (m.liveLocationMessage) {
+    const { degreesLatitude: lat, degreesLongitude: lng } = m.liveLocationMessage;
+    return { type: 'location', text: '📍 Ubicación en vivo', lat, lng };
+  }
+
+  // Sticker — ignorar silenciosamente
+  if (m.stickerMessage) return null;
+
+  // Tipo desconocido — registrar para debug
+  const tipos = Object.keys(m);
+  console.log(`[MSG] tipo no soportado:`, tipos);
+  return null;
+}
+
+async function handleIncoming(msg) {
+  const jid = msg.key.remoteJid;
+  if (!jid || jid.endsWith('@g.us')) return;
+
+  // WhatsApp LID (@lid): ID de privacidad — el número real está en senderPn
+  const phone = jid.endsWith('@lid')
+    ? (msg.key.senderPn || '').split('@')[0]
+    : jid.split('@')[0].split(':')[0];
+
+  if (!phone) {
+    console.log('[MSG] ignorado — no se pudo extraer número de teléfono', jid);
     return;
+  }
+  console.log(`\n[MSG] de: ${phone} | tipos:`, Object.keys(msg.message || {}));
+
+  const content = await extractContent(msg);
+  if (!content) {
+    console.log(`[MSG] ignorado — tipo sin soporte`);
+    return;
+  }
+  console.log(`[MSG] tipo: ${content.type} | texto: "${content.text?.slice(0, 60)}"`);
+
+  const t = now();
+
+  // Limpiar conversaciones demo al llegar el primer mensaje real
+  store.clearDemo();
+
+  // Si la conversación anterior está cerrada, retirarla del store para que getOrCreate abra una nueva
+  const prevConv = store.get(phone);
+  if (prevConv && prevConv.estado === 'Cerrado') {
+    console.log(`[MSG] conversación cerrada detectada — iniciando nueva para ${phone}`);
+    store.remove(phone);
   }
 
   store.getOrCreate(phone);
-  const t = now();
-  store.addMessage(phone, { from: 'ciudadano', text, time: t });
-  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
-  console.log(`[MSG] guardado en store y emitido al panel ✓`);
 
-  // Persistir en MySQL: ciudadano → conversación → mensaje
+  // Actualizar nombre con el del contacto de WhatsApp si está disponible
+  const waName = msg.pushName || '';
+  if (waName) {
+    store.update(phone, {
+      name: waName,
+      initials: waName.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    });
+  }
+
+  // Armar el objeto de mensaje para el store
+  const storeMsg = { from: 'ciudadano', type: content.type, text: content.text, time: t };
+  if (content.mediaUrl) storeMsg.mediaUrl = content.mediaUrl;
+  if (content.lat !== undefined) { storeMsg.lat = content.lat; storeMsg.lng = content.lng; }
+
+  store.addMessage(phone, storeMsg);
+
+  // Actualizar evidencia y coordenadas en la conversación
+  if (content.mediaUrl) {
+    const conv = store.get(phone);
+    store.update(phone, { evidencia: [...(conv.evidencia || []), content.mediaUrl] });
+  }
+  if (content.type === 'location' && content.lat !== undefined) {
+    store.update(phone, {
+      coords: `${content.lat.toFixed(5)}, ${content.lng.toFixed(5)}`,
+      coordsLabel: '📍 Enviada por ciudadano'
+    });
+  }
+
+  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
+
+  // Persistir en BD
   const conv = store.get(phone);
-  const ciudadanoId = await db.upsertCiudadano(phone);
+  const ciudadanoId = await db.upsertCiudadano(phone, waName || null);
   if (ciudadanoId) {
     await db.upsertConversacion(conv.id, ciudadanoId);
-    await db.saveMessage(conv.id, { origen: 'ciudadano', texto: text, hora: t });
-    console.log(`[DB] mensaje ciudadano guardado ✓`);
+    const dbTexto = content.type === 'location'
+      ? `${content.text} [${content.lat},${content.lng}]`
+      : content.mediaUrl ? `${content.text} [${content.mediaUrl}]` : content.text;
+    await db.saveMessage(conv.id, { origen: 'ciudadano', texto: dbTexto || content.type, hora: t });
+    if (content.type === 'location' && content.lat !== undefined) {
+      await db.updateConversacion(conv.id, {
+        coords:      `${content.lat.toFixed(5)}, ${content.lng.toFixed(5)}`,
+        coordsLabel: '📍 Enviada por ciudadano'
+      });
+    }
   }
 
+  // El bot solo responde a mensajes de texto; para media avisa que lo revisarán
   const convCheck = store.get(phone);
-  console.log(`[MSG] agente asignado: "${convCheck.agente}"`);
   if (convCheck.agente !== 'Sin asignar') {
-    console.log(`[MSG] bot no responde — hay un agente tomando el caso`);
+    console.log(`[MSG] caso asignado a "${convCheck.agente}" — bot no responde`);
     return;
   }
 
-  console.log(`[MSG] generando respuesta con Claude...`);
-  const botText = await generateBotResponse(convCheck.messages);
-  if (!botText) {
-    console.log(`[MSG] Claude no devolvió respuesta`);
-    return;
+  let botText;
+  if (content.type === 'text') {
+    console.log(`[MSG] generando respuesta con Claude...`);
+    botText = await generateBotResponse(convCheck.messages);
+  } else {
+    // Acusar recibo de media
+    const acks = {
+      image:    'Recibimos tu foto. Un agente la revisará pronto.',
+      video:    'Recibimos tu video. Un agente lo revisará pronto.',
+      audio:    'Recibimos tu nota de voz. Un agente la escuchará pronto.',
+      document: 'Recibimos tu archivo. Un agente lo revisará pronto.',
+      location: 'Recibimos tu ubicación. Un agente coordinará el apoyo.'
+    };
+    botText = acks[content.type] || 'Recibimos tu mensaje. Un agente lo atenderá pronto.';
   }
-  console.log(`[MSG] respuesta Claude: "${botText.slice(0, 80)}..."`);
+
+  if (!botText) return;
 
   const tBot = now();
   try {
     await sock.sendMessage(jid, { text: botText });
-    console.log(`[MSG] mensaje enviado por WhatsApp ✓`);
+    console.log(`[MSG] respuesta enviada ✓`);
   } catch (err) {
-    console.error(`[MSG] ERROR enviando WhatsApp:`, err.message);
+    console.error(`[MSG] ERROR enviando:`, err.message);
   }
 
-  store.addMessage(phone, { from: 'bot', text: botText, time: tBot });
+  store.addMessage(phone, { from: 'bot', type: 'text', text: botText, time: tBot });
   await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
 
-  console.log(`[MSG] analizando conversación con Claude...`);
-  const analysis = await analyzeConversation(store.get(phone).messages);
-  if (analysis) {
-    store.update(phone, analysis);
-    await db.updateConversacion(convCheck.id, analysis);
-    console.log(`[MSG] análisis guardado — tipo: ${analysis.tipo}, prioridad: ${analysis.prioridad}`);
+  // Análisis con Claude solo en conversaciones de texto
+  if (content.type === 'text') {
+    const analysis = await analyzeConversation(store.get(phone).messages);
+    if (analysis) {
+      store.update(phone, analysis);
+      await db.updateConversacion(convCheck.id, analysis);
+    }
   }
 
   if (ioRef) ioRef.emit('conversation:updated', store.get(phone));

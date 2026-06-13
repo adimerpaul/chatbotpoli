@@ -70,6 +70,15 @@ async function initDB() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // Columnas opcionales añadidas después del esquema original
+    const alteraciones = [
+      "ALTER TABLE conversaciones ADD COLUMN coords VARCHAR(100) NULL DEFAULT NULL",
+      "ALTER TABLE conversaciones ADD COLUMN coords_label VARCHAR(255) NULL DEFAULT NULL"
+    ];
+    for (const sql of alteraciones) {
+      try { await conn.query(sql); } catch {} // ignorar si ya existe
+    }
+
     console.log('✅ Base de datos lista (tablas verificadas)');
   } finally {
     conn.release();

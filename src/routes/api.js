@@ -13,6 +13,21 @@ router.get('/conversations', (_req, res) => {
   res.json(store.getAll());
 });
 
+// Truncate completo — limpia todas las tablas y el store en memoria
+router.post('/db/truncate', async (req, res) => {
+  try {
+    await db.truncateAll();
+    // Vaciar el store en memoria también
+    store.clear();
+    req.app.get('io').emit('store:cleared');
+    console.log('🗑️  Truncate completo ejecutado');
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[TRUNCATE]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/status', (_req, res) => {
   res.json(getWAInfo());
 });
@@ -72,6 +87,21 @@ router.post('/conversations/:id/tomar', async (req, res) => {
 
   req.app.get('io').emit('conversation:updated', updated);
   res.json(updated);
+});
+
+// Soft delete de conversación
+router.delete('/conversations/:id', async (req, res) => {
+  const conv = store.getById(req.params.id);
+  if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
+
+  try {
+    await db.deleteConversacion(conv.id);
+    store.remove(conv.phone);
+    req.app.get('io').emit('conversation:deleted', { id: conv.id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Actualizar estado o agente

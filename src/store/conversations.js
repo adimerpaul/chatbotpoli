@@ -79,7 +79,8 @@ class ConversationStore extends EventEmitter {
     conv.time = msg.time || now();
     if (msg.from === 'ciudadano') {
       conv.unread = true;
-      conv.preview = msg.text.slice(0, 120);
+      const previewMap = { image: '📷 Foto', video: '🎥 Video', audio: '🎤 Audio', document: '📄 Archivo', location: '📍 Ubicación' };
+      conv.preview = (msg.type && previewMap[msg.type]) ? previewMap[msg.type] + (msg.text ? ' · ' + msg.text.slice(0, 80) : '') : (msg.text || '').slice(0, 120);
       conv.createdAt = Date.now();
     }
     this.emit('updated', conv);
@@ -88,8 +89,45 @@ class ConversationStore extends EventEmitter {
 
   seed(data) {
     for (const d of data) {
-      this.conversations.set(d.phone, { ...d, createdAt: Date.now() - d._offset });
+      this.conversations.set(d.phone, { ...d, _demo: true, createdAt: Date.now() - d._offset });
       this.byId.set(d.id, d.phone);
+    }
+  }
+
+  clearDemo() {
+    const removed = [];
+    for (const [phone, conv] of this.conversations) {
+      if (conv._demo) {
+        removed.push(conv.id);
+        this.byId.delete(conv.id);
+        this.conversations.delete(phone);
+      }
+    }
+    if (removed.length) this.emit('demo-cleared', removed);
+  }
+
+  remove(phone) {
+    const conv = this.conversations.get(phone);
+    if (!conv) return;
+    this.byId.delete(conv.id);
+    this.conversations.delete(phone);
+  }
+
+  clear() {
+    this.conversations.clear();
+    this.byId.clear();
+  }
+
+  // Hidrata el store desde la BD; actualiza el contador para no colisionar folios
+  load(data) {
+    for (const d of data) {
+      this.conversations.set(d.phone, { ...d });
+      this.byId.set(d.id, d.phone);
+      const match = d.id.match(/(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > this.counter) this.counter = num;
+      }
     }
   }
 }

@@ -5,21 +5,21 @@ const { Server } = require('socket.io');
 const path = require('path');
 
 const store = require('./store/conversations');
-const seedData = require('./store/seed');
 const apiRoutes = require('./routes/api');
 const { connectWhatsApp, getWAInfo } = require('./bot/whatsapp');
 const initDB = require('./db/init');
+const db = require('./db/service');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Cargar datos de demostración
-store.seed(seedData);
-
 // Propagar eventos del store a todos los clientes del panel
 store.on('updated', (conv) => {
   io.emit('conversation:updated', conv);
+});
+store.on('demo-cleared', (ids) => {
+  io.emit('conversations:demo-cleared', { ids });
 });
 
 app.set('io', io);
@@ -49,6 +49,13 @@ server.listen(PORT, async () => {
 
   try {
     await initDB();
+    const saved = await db.loadAllConversaciones();
+    if (saved.length > 0) {
+      store.load(saved);
+      console.log(`📂 ${saved.length} conversaciones restauradas desde la BD`);
+    } else {
+      console.log('📂 BD vacía — panel listo para recibir conversaciones');
+    }
   } catch (err) {
     console.error('❌ Error iniciando base de datos:', err.message);
     console.error('   Verifica las variables DB_HOST, DB_USER, DB_PASSWORD, DB_NAME en .env');
