@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const store = require('../store/conversations');
-const { sendMessage, isConnected } = require('../bot/whatsapp');
+const { sendMessage, isConnected, getWAInfo, resetSession } = require('../bot/whatsapp');
+const db = require('../db/service');
 
 function now() {
   const d = new Date();
@@ -13,7 +14,17 @@ router.get('/conversations', (_req, res) => {
 });
 
 router.get('/status', (_req, res) => {
-  res.json({ whatsapp: isConnected() ? 'ready' : 'connecting' });
+  res.json(getWAInfo());
+});
+
+// Borrar sesión guardada y reconectar (muestra QR nuevo)
+router.post('/wa/reset', async (req, res) => {
+  try {
+    await resetSession(req.app.get('io'));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Enviar mensaje a ciudadano (desde el panel del operador)
@@ -28,6 +39,7 @@ router.post('/conversations/:id/send', async (req, res) => {
   const t = now();
 
   store.addMessage(conv.phone, { from: 'agente', text: text.trim(), time: t });
+  await db.saveMessage(conv.id, { origen: 'agente', texto: text.trim(), hora: t });
 
   // Enviar por WhatsApp si el canal es WhatsApp y está conectado
   if (conv.channel === 'WhatsApp' || conv.channel === 'whatsapp') {
@@ -44,22 +56,26 @@ router.post('/conversations/:id/send', async (req, res) => {
 });
 
 // Tomar caso como operador
-router.post('/conversations/:id/tomar', (req, res) => {
+router.post('/conversations/:id/tomar', async (req, res) => {
   const conv = store.getById(req.params.id);
   if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
 
   const agente = req.body.agente || process.env.OPERATOR_NAME || 'Of. Gutiérrez (Tú)';
   const t = now();
+  const sistemaText = `Caso asignado a ${agente} · ${t}`;
 
-  store.addMessage(conv.phone, { from: 'sistema', text: `Caso asignado a ${agente} · ${t}` });
+  store.addMessage(conv.phone, { from: 'sistema', text: sistemaText });
   const updated = store.update(conv.phone, { agente, estado: 'En proceso' });
+
+  await db.saveMessage(conv.id, { origen: 'sistema', texto: sistemaText, hora: t });
+  await db.updateConversacion(conv.id, { agente, estado: 'En proceso' });
 
   req.app.get('io').emit('conversation:updated', updated);
   res.json(updated);
 });
 
 // Actualizar estado o agente
-router.patch('/conversations/:id', (req, res) => {
+router.patch('/conversations/:id', async (req, res) => {
   const conv = store.getById(req.params.id);
   if (!conv) return res.status(404).json({ error: 'Conversación no encontrada' });
 
@@ -75,6 +91,8 @@ router.patch('/conversations/:id', (req, res) => {
   }
 
   const updated = store.update(conv.phone, changes);
+  await db.updateConversacion(conv.id, changes);
+
   req.app.get('io').emit('conversation:updated', updated);
   res.json(updated);
 });

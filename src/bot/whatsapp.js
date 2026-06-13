@@ -1,12 +1,31 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
+const {
+  default: makeWASocket,
+  DisconnectReason,
+  useMultiFileAuthState,
+  makeCacheableSignalKeyStore,
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys');
+const qrTerminal = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const pino = require('pino');
 const path = require('path');
+const fs = require('fs');
 const store = require('../store/conversations');
 const { analyzeConversation, generateBotResponse } = require('./claude');
+const db = require('../db/service');
+
+const authPath = path.join(__dirname, '../../.baileys_auth');
+const logger = pino({ level: 'silent' });
 
 let sock = null;
 let ioRef = null;
+let currentQRDataUrl = null;
+let connectedPhone = '';
+let waStatus = 'connecting'; // 'connecting' | 'qr' | 'ready'
+
+function getWAInfo() {
+  return { status: waStatus, qrDataUrl: currentQRDataUrl, phone: connectedPhone };
+}
 
 function now() {
   const d = new Date();
@@ -16,57 +35,110 @@ function now() {
 async function connectWhatsApp(io) {
   ioRef = io;
 
-  const authPath = path.join(__dirname, '../../.baileys_auth');
+  if (!fs.existsSync(authPath)) fs.mkdirSync(authPath, { recursive: true });
+
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
+  let version;
+  try {
+    const result = await fetchLatestBaileysVersion();
+    version = result.version;
+    console.log('📋 WA versión:', version.join('.'));
+  } catch (err) {
+    console.warn('⚠️  No se pudo obtener versión WA, usando la de Baileys:', err.message);
+  }
+
   sock = makeWASocket({
-    auth: state,
+    ...(version ? { version } : {}),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger)
+    },
     printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: ['Policia Oruro CAC', 'Chrome', '1.0.0'],
-    getMessage: async () => ({ conversation: '' })
+    logger,
+    browser: ['Chrome (Linux)', '', ''],
+    syncFullHistory: false,
+    generateHighQualityLinkPreview: true,
+    getMessage: async () => undefined
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
     if (qr) {
-      qrcode.generate(qr, { small: true });
-      console.log('\n📱 Escanea el QR con WhatsApp para conectar\n');
-      io.emit('whatsapp:qr', { qr });
+      qrTerminal.generate(qr, { small: true });
+      console.log('\n📱 QR listo — ve a "Conectar celular WA" en el panel\n');
+      try {
+        currentQRDataUrl = await QRCode.toDataURL(qr, {
+          width: 300,
+          margin: 2,
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+      } catch (err) {
+        console.error('[QR] Error generando imagen:', err.message);
+        currentQRDataUrl = null;
+      }
+      waStatus = 'qr';
+      io.emit('whatsapp:qr', { qrDataUrl: currentQRDataUrl });
     }
 
     if (connection === 'open') {
-      console.log('✅ WhatsApp conectado correctamente');
-      io.emit('whatsapp:ready');
+      connectedPhone = sock.user?.id?.split(':')[0] || '';
+      currentQRDataUrl = null;
+      waStatus = 'ready';
+      console.log(`✅ WhatsApp conectado: +${connectedPhone}`);
+      io.emit('whatsapp:ready', { phone: connectedPhone });
+      db.saveSession(connectedPhone);
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log(`⚠️  WhatsApp desconectado (código ${code})`);
-      if (shouldReconnect) {
-        console.log('🔄 Reconectando en 5s...');
-        setTimeout(() => connectWhatsApp(io), 5000);
+      waStatus = 'connecting';
+      console.log(`⚠️  Desconectado — código: ${code}`);
+
+      if (code === DisconnectReason.loggedOut) {
+        // Borrar sesión y reconectar para mostrar QR nuevo
+        console.log('🔄 Sesión expirada — borrando credenciales y reconectando...');
+        clearAuthFolder();
       } else {
-        console.log('🚫 Sesión cerrada. Elimina .baileys_auth y reinicia para reconectar.');
-        io.emit('whatsapp:logout');
+        console.log('🔄 Reconectando en 5s...');
       }
+      setTimeout(() => connectWhatsApp(io), 5000);
     }
   });
 
   sock.ev.on('messages.upsert', async ({ messages: msgs, type }) => {
-    if (type !== 'notify') return;
+    console.log(`📨 messages.upsert — type: ${type}, cantidad: ${msgs.length}`);
+    if (type !== 'notify') {
+      console.log(`   ↳ ignorado (type !== notify)`);
+      return;
+    }
     for (const msg of msgs) {
+      console.log(`   ↳ from: ${msg.key.remoteJid} | fromMe: ${msg.key.fromMe}`);
       if (msg.key.fromMe) continue;
       await handleIncoming(msg);
     }
   });
 }
 
+function clearAuthFolder() {
+  if (fs.existsSync(authPath)) {
+    for (const f of fs.readdirSync(authPath)) {
+      try { fs.unlinkSync(path.join(authPath, f)); } catch {}
+    }
+  }
+}
+
 async function handleIncoming(msg) {
   const jid = msg.key.remoteJid;
-  if (!jid || jid.endsWith('@g.us')) return; // ignorar grupos
+  console.log(`\n[MSG] jid: ${jid}`);
+
+  if (!jid || jid.endsWith('@g.us')) {
+    console.log(`[MSG] ignorado — es grupo o jid vacío`);
+    return;
+  }
 
   const phone = jid.replace('@s.whatsapp.net', '');
   const text =
@@ -75,39 +147,62 @@ async function handleIncoming(msg) {
     msg.message?.imageMessage?.caption ||
     '';
 
-  if (!text) return;
+  console.log(`[MSG] teléfono: ${phone}`);
+  console.log(`[MSG] texto: "${text}"`);
+  console.log(`[MSG] tipo de mensaje:`, Object.keys(msg.message || {}));
 
-  // Registrar conversación y mensaje del ciudadano
-  store.getOrCreate(phone);
-  store.addMessage(phone, { from: 'ciudadano', text, time: now() });
-
-  // Emitir al panel inmediatamente
-  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
-
-  const conv = store.get(phone);
-
-  // Solo el bot responde si el caso no fue tomado por un agente
-  if (conv.agente !== 'Sin asignar') return;
-
-  // Generar respuesta con Claude
-  const botText = await generateBotResponse(conv.messages);
-  if (!botText) return;
-
-  // Enviar respuesta por WhatsApp
-  try {
-    await sock.sendMessage(jid, { text: botText });
-  } catch (err) {
-    console.error('[WhatsApp] Error enviando mensaje:', err.message);
+  if (!text) {
+    console.log(`[MSG] ignorado — sin texto (puede ser imagen, audio, sticker, etc.)`);
+    return;
   }
 
-  // Guardar respuesta del bot en el store
-  store.addMessage(phone, { from: 'bot', text: botText, time: now() });
+  store.getOrCreate(phone);
+  const t = now();
+  store.addMessage(phone, { from: 'ciudadano', text, time: t });
+  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
+  console.log(`[MSG] guardado en store y emitido al panel ✓`);
 
-  // Analizar la conversación actualizada
-  const updated = store.get(phone);
-  const analysis = await analyzeConversation(updated.messages);
+  // Persistir en MySQL: ciudadano → conversación → mensaje
+  const conv = store.get(phone);
+  const ciudadanoId = await db.upsertCiudadano(phone);
+  if (ciudadanoId) {
+    await db.upsertConversacion(conv.id, ciudadanoId);
+    await db.saveMessage(conv.id, { origen: 'ciudadano', texto: text, hora: t });
+    console.log(`[DB] mensaje ciudadano guardado ✓`);
+  }
+
+  const convCheck = store.get(phone);
+  console.log(`[MSG] agente asignado: "${convCheck.agente}"`);
+  if (convCheck.agente !== 'Sin asignar') {
+    console.log(`[MSG] bot no responde — hay un agente tomando el caso`);
+    return;
+  }
+
+  console.log(`[MSG] generando respuesta con Claude...`);
+  const botText = await generateBotResponse(convCheck.messages);
+  if (!botText) {
+    console.log(`[MSG] Claude no devolvió respuesta`);
+    return;
+  }
+  console.log(`[MSG] respuesta Claude: "${botText.slice(0, 80)}..."`);
+
+  const tBot = now();
+  try {
+    await sock.sendMessage(jid, { text: botText });
+    console.log(`[MSG] mensaje enviado por WhatsApp ✓`);
+  } catch (err) {
+    console.error(`[MSG] ERROR enviando WhatsApp:`, err.message);
+  }
+
+  store.addMessage(phone, { from: 'bot', text: botText, time: tBot });
+  await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
+
+  console.log(`[MSG] analizando conversación con Claude...`);
+  const analysis = await analyzeConversation(store.get(phone).messages);
   if (analysis) {
     store.update(phone, analysis);
+    await db.updateConversacion(convCheck.id, analysis);
+    console.log(`[MSG] análisis guardado — tipo: ${analysis.tipo}, prioridad: ${analysis.prioridad}`);
   }
 
   if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
@@ -123,4 +218,17 @@ function isConnected() {
   return sock?.user != null;
 }
 
-module.exports = { connectWhatsApp, sendMessage, isConnected };
+async function resetSession(io) {
+  if (sock) {
+    try { sock.end(undefined, true); } catch {}
+    sock = null;
+  }
+  clearAuthFolder();
+  waStatus = 'connecting';
+  currentQRDataUrl = null;
+  connectedPhone = '';
+  console.log('🗑️  Sesión borrada. Iniciando nueva conexión...');
+  await connectWhatsApp(io || ioRef);
+}
+
+module.exports = { connectWhatsApp, sendMessage, isConnected, getWAInfo, resetSession };

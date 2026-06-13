@@ -19,6 +19,7 @@
   @keyframes pulsedot{0%{box-shadow:0 0 0 0 rgba(192,57,43,.5)}70%{box-shadow:0 0 0 9px rgba(192,57,43,0)}100%{box-shadow:0 0 0 0 rgba(192,57,43,0)}}
   @keyframes livedot{0%,100%{opacity:1}50%{opacity:.35}}
   @keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes progress{from{transform:translateX(-40%)}to{transform:translateX(140%)}}
   #qr-modal{position:fixed;inset:0;background:rgba(10,31,60,.85);z-index:9999;display:flex;align-items:center;justify-content:center}
   #qr-modal.hidden{display:none}
   #qr-box{background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;animation:fadein .25s ease}
@@ -27,16 +28,6 @@
 </head>
 <body>
 
-<!-- Modal QR WhatsApp -->
-<div id="qr-modal" class="hidden">
-  <div id="qr-box">
-    <div style="width:48px;height:48px;border-radius:12px;background:#25D366;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:26px">📱</div>
-    <div style="font-size:18px;font-weight:700;color:#15233a;margin-bottom:8px">Conectar WhatsApp</div>
-    <div style="font-size:13px;color:#7a8699;margin-bottom:20px;line-height:1.5">Escanea este código QR con la app de WhatsApp para activar el canal ciudadano.</div>
-    <canvas id="qr-canvas" style="max-width:220px;width:100%;border:1px solid #e0e5ee;border-radius:10px;padding:8px"></canvas>
-    <div style="margin-top:16px;font-size:12px;color:#9aa6b6">WhatsApp → Dispositivos vinculados → Vincular dispositivo</div>
-  </div>
-</div>
 
 <div id="app" style="height:100vh"></div>
 
@@ -54,7 +45,9 @@ var state = {
   composer: '',
   _focus: null,
   convs: [],
-  waStatus: 'connecting'
+  waStatus: 'connecting',
+  qrDataUrl: null,
+  waPhone: ''
 };
 
 /* ===================== HELPERS ===================== */
@@ -79,8 +72,16 @@ function updateConvInState(conv) {
 var socket = io();
 
 socket.on('connect', function(){
+  // Al conectar, pedir el estado actual como respaldo (por si el evento llegó antes)
   fetch('/api/status').then(function(r){ return r.json(); }).then(function(s){
-    if (s.whatsapp === 'ready') state.waStatus = 'ready';
+    if (s.status === 'ready') {
+      state.waStatus = 'ready';
+      state.waPhone = s.phone || '';
+      state.qrDataUrl = null;
+    } else if (s.status === 'qr' && s.qrDataUrl) {
+      state.waStatus = 'qr';
+      state.qrDataUrl = s.qrDataUrl;
+    }
     render();
   });
 });
@@ -93,13 +94,14 @@ socket.on('conversation:updated', function(conv) {
 
 socket.on('whatsapp:qr', function(data) {
   state.waStatus = 'qr';
-  showQRModal(data.qr);
+  state.qrDataUrl = data.qrDataUrl;
   render();
 });
 
-socket.on('whatsapp:ready', function() {
+socket.on('whatsapp:ready', function(data) {
   state.waStatus = 'ready';
-  hideQRModal();
+  state.qrDataUrl = null;
+  state.waPhone = (data && data.phone) ? data.phone : '';
   render();
 });
 
@@ -108,32 +110,6 @@ socket.on('whatsapp:logout', function() {
   render();
 });
 
-/* ===================== QR MODAL ===================== */
-function showQRModal(qrText) {
-  var modal = document.getElementById('qr-modal');
-  if (modal) modal.classList.remove('hidden');
-  // Dibujar QR en canvas usando una lib simple si está disponible,
-  // o mostrar el texto en un pre como fallback
-  var canvas = document.getElementById('qr-canvas');
-  if (canvas && window.QRCode) {
-    QRCode.toCanvas(canvas, qrText, { width: 220, margin: 1 });
-  } else if (canvas) {
-    // Fallback: mostrar link alternativo
-    var ctx = canvas.getContext('2d');
-    canvas.width = 220; canvas.height = 60;
-    ctx.fillStyle = '#f7f9fc';
-    ctx.fillRect(0, 0, 220, 60);
-    ctx.fillStyle = '#5a6b82';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('QR en terminal del servidor', 110, 35);
-  }
-}
-
-function hideQRModal() {
-  var modal = document.getElementById('qr-modal');
-  if (modal) modal.classList.add('hidden');
-}
 
 /* ===================== ACCIONES SÍNCRONAS ===================== */
 function dispatch(action, el){
@@ -142,6 +118,7 @@ function dispatch(action, el){
     case 'view-mapa': state.view='mapa'; render(); break;
     case 'view-stats': state.view='stats'; render(); break;
     case 'view-agentes': state.view='agentes'; render(); break;
+    case 'view-whatsapp': state.view='whatsapp'; render(); break;
     case 'filter-tipo': state.filterTipo=el.getAttribute('data-val'); render(); break;
     case 'select-conv':
       state.selectedId=el.getAttribute('data-id');
@@ -230,19 +207,19 @@ function navItem(action, dot, label, active, badgeNum){
 
 function waBadge() {
   if (state.waStatus === 'ready') {
-    return '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#1f8a5b;background:#eaf6ef;border:1px solid #cdeada;padding:6px 11px;border-radius:9px"><span style="width:7px;height:7px;border-radius:50%;background:#1f8a5b;animation:livedot 1.8s infinite"></span>WhatsApp</div>';
+    return '<div data-action="view-whatsapp" style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#1f8a5b;background:#eaf6ef;border:1px solid #cdeada;padding:6px 11px;border-radius:9px;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;background:#1f8a5b;animation:livedot 1.8s infinite"></span>WhatsApp activo</div>';
   }
   if (state.waStatus === 'qr') {
-    return '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#b9751a;background:#fbf1e0;border:1px solid #f5d9a0;padding:6px 11px;border-radius:9px;cursor:pointer" onclick="document.getElementById(\'qr-modal\').classList.remove(\'hidden\')">📱 Escanea QR</div>';
+    return '<div data-action="view-whatsapp" style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#b9751a;background:#fbf1e0;border:1px solid #f5d9a0;padding:6px 11px;border-radius:9px;cursor:pointer;animation:livedot .8s infinite">📱 Escanea QR</div>';
   }
-  return '<div style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#5a6b82;background:#eef1f6;border:1px solid #e0e5ee;padding:6px 11px;border-radius:9px"><span style="width:7px;height:7px;border-radius:50%;background:#9aa6b6"></span>WA conectando...</div>';
+  return '<div data-action="view-whatsapp" style="display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;color:#5a6b82;background:#eef1f6;border:1px solid #e0e5ee;padding:6px 11px;border-radius:9px;cursor:pointer"><span style="width:7px;height:7px;border-radius:50%;background:#9aa6b6"></span>WA conectando...</div>';
 }
 
 function renderShell(content){
   var v=state.view;
   var countNuevos = state.convs.filter(function(c){return c.estado==='Nuevo';}).length;
-  var titles={ bandeja:['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'], mapa:['Mapa de incidentes','Distribución geográfica de casos en Oruro'], stats:['Estadísticas','Indicadores de gestión del centro de atención'], agentes:['Agentes','Disponibilidad y carga de casos del personal'] };
-  var tt=titles[v];
+  var titles={ bandeja:['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'], mapa:['Mapa de incidentes','Distribución geográfica de casos en Oruro'], stats:['Estadísticas','Indicadores de gestión del centro de atención'], agentes:['Agentes','Disponibilidad y carga de casos del personal'], whatsapp:['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'] };
+  var tt=titles[v]||titles.bandeja;
 
   return '<div style="height:100vh;display:flex;background:#eef1f6;color:#1a2433;overflow:hidden">'
   + '<aside style="width:252px;flex-shrink:0;background:linear-gradient(180deg,#0b2545 0%,#0a1f3c 100%);color:#dbe4f3;display:flex;flex-direction:column">'
@@ -256,6 +233,8 @@ function renderShell(content){
       + navItem('view-mapa','#3fae7a','Mapa de incidentes', v==='mapa', null)
       + navItem('view-stats','#d6a23a','Estadísticas', v==='stats', null)
       + navItem('view-agentes','#9b7fe0','Agentes', v==='agentes', null)
+      + '<div style="font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:14px 12px 8px">CANALES</div>'
+      + navItem('view-whatsapp', state.waStatus==='ready'?'#3fae7a':state.waStatus==='qr'?'#d6a23a':'#64769a', 'Conectar celular WA', v==='whatsapp', state.waStatus==='qr'?'!':null)
       + '<div style="margin-top:auto;padding:14px 12px 6px"><div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px"><div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa0c0;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:#3fae7a;animation:livedot 1.8s infinite"></span>ASISTENTE IA ACTIVO</div><div style="font-size:11.5px;color:#aab8d0;margin-top:7px;line-height:1.5">Clasificando mensajes entrantes y resumiendo en tiempo real.</div></div></div>'
     + '</div>'
     + '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px"><div style="width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0">OG</div><div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Of. Gutiérrez</div><div style="font-size:11px;color:#8aa0c0">Operador · Turno A</div></div><span style="width:8px;height:8px;border-radius:50%;background:#3fae7a;flex-shrink:0"></span></div>'
@@ -477,6 +456,79 @@ function renderMapa(){
   + '</div>';
 }
 
+/* ===================== RENDER: WHATSAPP ===================== */
+function renderWhatsapp(){
+  var isReady = state.waStatus === 'ready';
+  var isQR    = state.waStatus === 'qr';
+
+  var statusBar = isReady
+    ? '<div style="display:flex;align-items:center;gap:10px;background:#eaf6ef;border:1px solid #b7e4cc;border-radius:11px;padding:14px 18px"><span style="width:10px;height:10px;border-radius:50%;background:#1f8a5b;flex-shrink:0;animation:livedot 1.8s infinite"></span><div><div style="font-size:13.5px;font-weight:700;color:#1f8a5b">WhatsApp conectado correctamente</div>'+(state.waPhone?'<div style="font-size:12px;color:#3a7a5a;margin-top:2px">Número vinculado: <b>+'+esc(state.waPhone)+'</b></div>':'')+'</div></div>'
+    : isQR
+    ? '<div style="display:flex;align-items:center;gap:10px;background:#fbf1e0;border:1px solid #f5d9a0;border-radius:11px;padding:14px 18px"><span style="width:10px;height:10px;border-radius:50%;background:#d6a23a;flex-shrink:0;animation:livedot 1s infinite"></span><div style="font-size:13.5px;font-weight:700;color:#b9751a">Código QR listo — escanéalo ahora</div></div>'
+    : '<div style="display:flex;align-items:center;gap:10px;background:#f1f4f9;border:1px solid #e0e5ee;border-radius:11px;padding:14px 18px"><span style="width:10px;height:10px;border-radius:50%;background:#9aa6b6;flex-shrink:0"></span><div style="font-size:13.5px;font-weight:600;color:#5a6b82">Iniciando conexión con WhatsApp...</div></div>';
+
+  var qrSection = '';
+  if (isQR) {
+    var qrImg = state.qrDataUrl
+      ? '<img src="'+state.qrDataUrl+'" style="width:240px;height:240px;border-radius:12px;display:block" />'
+      : '<div style="width:240px;height:240px;border-radius:12px;background:#f1f4f9;border:1px solid #e0e5ee;display:flex;align-items:center;justify-content:center;font-size:13px;color:#9aa6b6">Cargando QR...</div>';
+
+    qrSection = '<div style="display:flex;gap:40px;align-items:flex-start;margin-top:28px">'
+      + '<div style="flex-shrink:0;padding:14px;background:#fff;border:1px solid #e3e8f0;border-radius:16px;box-shadow:0 2px 12px rgba(16,30,54,.08)">'+qrImg+'<div style="margin-top:10px;font-size:11px;color:#9aa6b6;text-align:center">El QR expira cada 60 segundos</div></div>'
+      + '<div style="display:flex;flex-direction:column;gap:18px;padding-top:6px">'
+        + step(1,'Abre WhatsApp en tu celular')
+        + step(2,'Toca el menú ⋮ (tres puntos) o Configuración')
+        + step(3,'Selecciona <b>Dispositivos vinculados</b>')
+        + step(4,'Toca <b>Vincular un dispositivo</b> y escanea el código')
+        + '<div style="margin-top:6px;background:#f5f8ff;border:1px solid #dde8ff;border-radius:10px;padding:13px;font-size:12.5px;color:#33405a;line-height:1.6">Una vez vinculado, el canal de WhatsApp quedará activo y los mensajes de los ciudadanos aparecerán en la bandeja automáticamente.</div>'
+      + '</div>'
+    + '</div>';
+  } else if (isReady) {
+    qrSection = '<div style="margin-top:28px;background:#f5fef8;border:1px solid #b7e4cc;border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:14px">'
+      + '<div style="font-size:14px;font-weight:700;color:#15233a">Canal activo</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+        + infoCard('Estado','Recibiendo mensajes','#1f8a5b')
+        + infoCard('Canal','WhatsApp Business','#2f6fed')
+        + infoCard('Asistente IA','Claude — activo','#9b7fe0')
+        + infoCard('Respuesta automática','Activada','#1f8a5b')
+      + '</div>'
+      + '<div style="font-size:12.5px;color:#5a6b82;line-height:1.6">Para desvincular el número ve a WhatsApp → Dispositivos vinculados y elimina este dispositivo. Reinicia el servidor para escanear un QR nuevo.</div>'
+    + '</div>';
+  } else {
+    qrSection = '<div style="margin-top:28px;display:flex;flex-direction:column;gap:16px">'
+      + '<div style="font-size:13.5px;color:#5a6b82;line-height:1.7">El servidor está iniciando la conexión con WhatsApp. El código QR aparecerá aquí en unos segundos...</div>'
+      + '<div style="height:4px;background:#e3e8f0;border-radius:99px;overflow:hidden"><div style="height:100%;width:60%;background:linear-gradient(90deg,#2f6fed,#5b8def);border-radius:99px;animation:progress 1.5s ease-in-out infinite alternate"></div></div>'
+    + '</div>';
+  }
+
+  var resetBtn = '<div style="margin-top:22px">'
+    + '<button onclick="waReset()" style="border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:13px;font-weight:600;padding:10px 18px;border-radius:9px;cursor:pointer">Borrar sesión y pedir nuevo QR</button>'
+    + '<span style="font-size:12px;color:#9aa6b6;margin-left:12px">Úsalo si el QR no carga o la sesión quedó corrupta</span>'
+  + '</div>';
+
+  return '<div style="height:100%;overflow:auto;padding:32px 36px">'
+    + '<div style="max-width:780px">'
+      + statusBar
+      + qrSection
+      + (!isReady ? resetBtn : '')
+    + '</div>'
+  + '</div>';
+}
+
+function step(n, text) {
+  return '<div style="display:flex;gap:14px;align-items:flex-start">'
+    + '<div style="width:28px;height:28px;border-radius:50%;background:#2f6fed;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+n+'</div>'
+    + '<div style="font-size:13.5px;color:#33405a;line-height:1.6;padding-top:4px">'+text+'</div>'
+  + '</div>';
+}
+
+function infoCard(label, value, color) {
+  return '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:10px;padding:14px">'
+    + '<div style="font-size:11.5px;color:#7a8699;font-weight:600;letter-spacing:.3px;margin-bottom:5px">'+label.toUpperCase()+'</div>'
+    + '<div style="font-size:13.5px;font-weight:700;color:'+(color||'#15233a')+'">'+value+'</div>'
+  + '</div>';
+}
+
 /* ===================== RENDER: AGENTES ===================== */
 function renderAgentes(){
   function agEstado(e){ var m={Disponible:['#1f8a5b','#e6f5ee'],Ocupado:['#b9751a','#fbf1e0'],'Fuera de servicio':['#5a6b82','#eef1f6']}; var c=m[e]||['#5a6b82','#eef1f6']; return badge(c[0],c[1]); }
@@ -497,6 +549,7 @@ function render(){
   if(state.view==='bandeja') content=renderBandeja();
   else if(state.view==='stats') content=renderStats();
   else if(state.view==='mapa') content=renderMapa();
+  else if(state.view==='whatsapp') content=renderWhatsapp();
   else content=renderAgentes();
 
   document.getElementById('app').innerHTML = renderShell(content);
@@ -506,6 +559,17 @@ function render(){
   if(state._focus==='search'){ var si=document.getElementById('searchInput'); if(si){ si.focus(); var n=si.value.length; si.setSelectionRange(n,n); } }
   else if(state._focus==='composer'){ var ci=document.getElementById('composerInput'); if(ci){ ci.focus(); var m=ci.value.length; ci.setSelectionRange(m,m); } }
   state._focus=null;
+}
+
+/* ===================== ACCIONES WHATSAPP ===================== */
+function waReset() {
+  fetch('/api/wa/reset', { method: 'POST' })
+    .then(function(r){ return r.json(); })
+    .then(function(){
+      state.waStatus = 'connecting';
+      state.qrDataUrl = null;
+      render();
+    });
 }
 
 /* ===================== INICIO ===================== */
