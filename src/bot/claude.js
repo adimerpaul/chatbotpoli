@@ -1,9 +1,10 @@
 const Anthropic = require('@anthropic-ai/sdk');
+const dbConocimiento = require('../db/conocimiento');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
 
-const SYSTEM_PROMPT = `Eres el asistente virtual de la Policía Boliviana, División Oruro.
+const SYSTEM_BASE = `Eres el asistente virtual de la Policía Boliviana, División Oruro.
 Tu función es atender al ciudadano de forma empática, clasificar su caso y recopilar información clave.
 
 TIPOS DE CASO:
@@ -20,6 +21,17 @@ Responde siempre en español boliviano, de forma breve y clara.
 Haz una sola pregunta por mensaje para recopilar: tipo de incidente, ubicación exacta, datos del denunciante.
 Si detectas EMERGENCIA, notifica inmediatamente que se está enviando una unidad y pide confirmación de ubicación.
 Nunca hagas más de 3 preguntas seguidas — escala al operador humano cuando tengas info suficiente.`;
+
+async function buildSystemPrompt() {
+  try {
+    const entradas = await dbConocimiento.getActivos();
+    if (entradas.length === 0) return SYSTEM_BASE;
+    const kb = entradas.map((e, i) => `${i + 1}. Pregunta: ${e.pregunta}\n   Respuesta: ${e.respuesta}`).join('\n\n');
+    return `${SYSTEM_BASE}\n\nBASE DE CONOCIMIENTO INSTITUCIONAL (usa esta información exacta cuando el ciudadano pregunte sobre estos temas):\n${kb}`;
+  } catch {
+    return SYSTEM_BASE;
+  }
+}
 
 async function analyzeConversation(messages) {
   const relevant = messages.filter(m => m.from !== 'sistema');
@@ -80,10 +92,11 @@ async function generateBotResponse(messages) {
   if (history[history.length - 1].role !== 'user') return null;
 
   try {
+    const systemPrompt = await buildSystemPrompt();
     const response = await client.messages.create({
       model: MODEL,
       max_tokens: 256,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: history
     });
 

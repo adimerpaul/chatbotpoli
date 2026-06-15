@@ -94,8 +94,9 @@
   </aside>
 </template>
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useConversationsStore } from '@/stores/conversations'
+import { apiFetch } from '@/lib/api'
 import LeafletMap from './LeafletMap.vue'
 import { generatePdf } from '@/composables/usePdfReport'
 const store = useConversationsStore()
@@ -103,21 +104,27 @@ const sel = computed(() => store.selected)
 const agenteV = ref(sel.value?.agente||'Sin asignar')
 watch(() => sel.value?.agente, v => { if(v) agenteV.value=v })
 watch(() => sel.value?.id, () => { agenteV.value = sel.value?.agente||'Sin asignar' })
-const agentes = ['Sin asignar','Sgto. Flores','Cabo Choque','Sgto. Mamani','Of. Gutiérrez (Tú)']
+const agentes = ref(['Sin asignar'])
+onMounted(async () => {
+  try {
+    const data = await apiFetch('/api/auth/agents').then(r => r.json())
+    agentes.value = ['Sin asignar', ...data.map(u => u.nombre)]
+  } catch {}
+})
 const coordStr = computed(() => {
   if (sel.value?.coords && sel.value.coords!=='—') return sel.value.coords
   const lm = sel.value?.messages?.find(m=>m.type==='location'&&m.lat!==undefined)
   return lm ? `${lm.lat.toFixed(5)}, ${lm.lng.toFixed(5)}` : null
 })
 async function patch(changes) {
-  const u = await fetch(`/api/conversations/${sel.value.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)}).then(r=>r.json())
+  const u = await apiFetch(`/api/conversations/${sel.value.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(changes)}).then(r=>r.json())
   store.upsert(u)
 }
 async function deleteCaso() {
   const id = sel.value?.id
   if (!id) return
   if (!confirm(`¿Eliminar el caso ${id}?`)) return
-  const r = await fetch(`/api/conversations/${id}`, {method:'DELETE'}).then(r=>r.json())
+  const r = await apiFetch(`/api/conversations/${id}`, {method:'DELETE'}).then(r=>r.json())
   if (r.ok) store.remove(id)
 }
 const pdfLoading = ref(false)

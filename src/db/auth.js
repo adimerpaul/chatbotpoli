@@ -8,7 +8,8 @@ const ALL_PERMS = [
   'cambiar_estado',
   'eliminar_conversaciones',
   'gestionar_usuarios',
-  'gestionar_bot'
+  'gestionar_bot',
+  'gestionar_conocimiento'
 ];
 
 async function findUserByUsername(username) {
@@ -26,7 +27,7 @@ async function getUserPermissions(userId) {
 
 async function getAllUsers() {
   const [users] = await pool.query(
-    'SELECT id, username, nombre, email, activo, created_at FROM usuarios ORDER BY id ASC'
+    'SELECT id, username, nombre, email, celular, activo, created_at FROM usuarios ORDER BY id ASC'
   );
   for (const user of users) {
     user.permisos = await getUserPermissions(user.id);
@@ -34,11 +35,18 @@ async function getAllUsers() {
   return users;
 }
 
-async function createUser({ username, password, nombre, email, permisos = [] }) {
+async function getActiveAgents() {
+  const [users] = await pool.query(
+    'SELECT id, username, nombre, celular FROM usuarios WHERE activo = 1 ORDER BY nombre ASC'
+  );
+  return users;
+}
+
+async function createUser({ username, password, nombre, email, celular, permisos = [] }) {
   const hash = await bcrypt.hash(password, 10);
   const [result] = await pool.query(
-    'INSERT INTO usuarios (username, password, nombre, email) VALUES (?, ?, ?, ?)',
-    [username, hash, nombre || username, email || null]
+    'INSERT INTO usuarios (username, password, nombre, email, celular) VALUES (?, ?, ?, ?, ?)',
+    [username, hash, nombre || username, email || null, celular || null]
   );
   const userId = result.insertId;
   for (const perm of permisos) {
@@ -49,11 +57,12 @@ async function createUser({ username, password, nombre, email, permisos = [] }) 
   return userId;
 }
 
-async function updateUser(id, { nombre, email, password, activo }) {
+async function updateUser(id, { nombre, email, celular, password, activo }) {
   const sets = [];
   const values = [];
   if (nombre !== undefined) { sets.push('nombre = ?'); values.push(nombre); }
   if (email !== undefined) { sets.push('email = ?'); values.push(email || null); }
+  if (celular !== undefined) { sets.push('celular = ?'); values.push(celular || null); }
   if (activo !== undefined) { sets.push('activo = ?'); values.push(activo ? 1 : 0); }
   if (password) {
     const hash = await bcrypt.hash(password, 10);
@@ -78,4 +87,4 @@ async function deleteUser(id) {
   await pool.query('DELETE FROM usuarios WHERE id = ?', [id]);
 }
 
-module.exports = { findUserByUsername, getUserPermissions, getAllUsers, createUser, updateUser, setUserPermisos, deleteUser, ALL_PERMS };
+module.exports = { findUserByUsername, getUserPermissions, getAllUsers, getActiveAgents, createUser, updateUser, setUserPermisos, deleteUser, ALL_PERMS };

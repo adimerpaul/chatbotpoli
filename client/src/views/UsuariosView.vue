@@ -19,7 +19,7 @@
               <span class="uname">{{ u.nombre || u.username }}</span>
               <span class="badge-act" :class="u.activo ? 'on' : 'off'">{{ u.activo ? 'Activo' : 'Inactivo' }}</span>
             </div>
-            <div class="umeta">@{{ u.username }}<span v-if="u.email"> · {{ u.email }}</span></div>
+            <div class="umeta">@{{ u.username }}<span v-if="u.email"> · {{ u.email }}</span><span v-if="u.celular" class="cel-tag">📱 {{ u.celular }}</span></div>
             <div class="perm-list">
               <span v-if="!u.permisos?.length" class="no-perm">Sin permisos</span>
               <span v-for="p in u.permisos" :key="p" class="perm-tag">{{ PERM_LABELS[p] || p }}</span>
@@ -54,6 +54,10 @@
           <div class="mfield">
             <label>Email</label>
             <input v-model="form.email" type="email" placeholder="correo@ejemplo.com" />
+          </div>
+          <div class="mfield">
+            <label>Número de celular</label>
+            <input v-model="form.celular" type="tel" placeholder="72345678" />
           </div>
           <div class="mfield">
             <label>{{ editing ? 'Nueva contraseña (vacío = no cambiar)' : 'Contraseña' }}</label>
@@ -119,7 +123,7 @@ const modal = ref(false)
 const editing = ref(null)
 const saving = ref(false)
 const formError = ref('')
-const form = reactive({ username: '', nombre: '', email: '', password: '', activo: true, permisos: [] })
+const form = reactive({ username: '', nombre: '', email: '', celular: '', password: '', activo: true, permisos: [] })
 const showPass = ref(false)
 
 function initials(u) { return (u.nombre || u.username || '?').slice(0, 2).toUpperCase() }
@@ -137,7 +141,7 @@ async function load() {
 
 function openNew() {
   editing.value = null
-  Object.assign(form, { username: '', nombre: '', email: '', password: '', activo: true, permisos: [] })
+  Object.assign(form, { username: '', nombre: '', email: '', celular: '', password: '', activo: true, permisos: [] })
   formError.value = ''
   showPass.value = false
   modal.value = true
@@ -145,7 +149,7 @@ function openNew() {
 
 function openEdit(u) {
   editing.value = u
-  Object.assign(form, { username: u.username, nombre: u.nombre || '', email: u.email || '', password: '', activo: u.activo, permisos: [...(u.permisos || [])] })
+  Object.assign(form, { username: u.username, nombre: u.nombre || '', email: u.email || '', celular: u.celular || '', password: '', activo: u.activo, permisos: [...(u.permisos || [])] })
   formError.value = ''
   showPass.value = false
   modal.value = true
@@ -163,8 +167,8 @@ async function save() {
     const url = editing.value ? `/api/auth/users/${editing.value.id}` : '/api/auth/users'
     const method = editing.value ? 'PUT' : 'POST'
     const body = editing.value
-      ? { nombre: form.nombre, email: form.email || null, permisos: form.permisos, activo: form.activo, ...(form.password ? { password: form.password } : {}) }
-      : { username: form.username.trim(), password: form.password, nombre: form.nombre, email: form.email || null, permisos: form.permisos }
+      ? { nombre: form.nombre, email: form.email || null, celular: form.celular || null, permisos: form.permisos, activo: form.activo, ...(form.password ? { password: form.password } : {}) }
+      : { username: form.username.trim(), password: form.password, nombre: form.nombre, email: form.email || null, celular: form.celular || null, permisos: form.permisos }
 
     const res = await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json())
     if (res.error) { formError.value = res.error; return }
@@ -203,7 +207,8 @@ onMounted(load)
 .badge-act{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px}
 .badge-act.on{background:#e6f5ee;color:#1f8a5b}
 .badge-act.off{background:#eef1f6;color:#7a8699}
-.umeta{font-size:12px;color:#7a8699;font-family:'IBM Plex Mono',monospace;margin-bottom:10px}
+.umeta{font-size:12px;color:#7a8699;font-family:'IBM Plex Mono',monospace;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cel-tag{font-size:11.5px;color:#1f8a5b;background:#e6f5ee;padding:2px 8px;border-radius:999px;font-family:inherit}
 .perm-list{display:flex;flex-wrap:wrap;gap:5px}
 .no-perm{font-size:11.5px;color:#9aa6b6}
 .perm-tag{background:#e7f0ff;color:#2f6fed;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px}

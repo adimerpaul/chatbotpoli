@@ -7,6 +7,7 @@ const path = require('path');
 const store = require('./store/conversations');
 const apiRoutes = require('./routes/api');
 const authRoutes = require('./routes/auth');
+const conocimientoRoutes = require('./routes/conocimiento');
 const { authMiddleware } = require('./middleware/auth');
 const { connectWhatsApp, getWAInfo } = require('./bot/whatsapp');
 const initDB = require('./db/init');
@@ -32,6 +33,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use('/api/auth', authRoutes);
 
 // Todas las demás rutas API requieren token JWT válido
+app.use('/api/conocimiento', conocimientoRoutes);
 app.use('/api', authMiddleware, apiRoutes);
 
 // Página de login

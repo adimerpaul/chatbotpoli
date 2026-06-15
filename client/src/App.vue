@@ -33,11 +33,15 @@
           Conectar celular WA
           <span v-if="wa.status==='qr'" class="nav-badge">!</span>
         </RouterLink>
-        <template v-if="auth.hasPerm('gestionar_usuarios')">
+        <template v-if="auth.hasPerm('gestionar_usuarios') || auth.hasPerm('gestionar_conocimiento')">
           <div class="nav-label" style="margin-top:10px">ADMINISTRACIÓN</div>
-          <RouterLink to="/usuarios" class="nav-item">
+          <RouterLink v-if="auth.hasPerm('gestionar_usuarios')" to="/usuarios" class="nav-item">
             <span class="nav-dot" style="background:#e87d3e"></span>
             Gestionar usuarios
+          </RouterLink>
+          <RouterLink v-if="auth.hasPerm('gestionar_conocimiento')" to="/conocimiento" class="nav-item">
+            <span class="nav-dot" style="background:#9b59b6"></span>
+            Base de Conocimiento IA
           </RouterLink>
         </template>
         <div class="ai-card">
@@ -104,7 +108,8 @@ const META = {
   '/mapa':     ['Mapa de incidentes','Distribución geográfica de casos en Oruro'],
   '/stats':    ['Estadísticas','Indicadores de gestión del centro de atención'],
   '/whatsapp': ['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'],
-  '/usuarios': ['Gestión de Usuarios','Administración de cuentas y permisos del panel']
+  '/usuarios':     ['Gestión de Usuarios','Administración de cuentas y permisos del panel'],
+  '/conocimiento': ['Base de Conocimiento IA','Preguntas y respuestas que el asistente IA usará para atender al ciudadano']
 }
 const pageTitle = computed(() => (META[route.path]||META['/bandeja'])[0])
 const pageSub   = computed(() => (META[route.path]||META['/bandeja'])[1])

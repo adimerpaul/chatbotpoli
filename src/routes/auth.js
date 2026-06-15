@@ -32,6 +32,16 @@ router.get('/me', authMiddleware, (req, res) => {
   res.json({ user: req.user });
 });
 
+// Lista de agentes activos — accesible a cualquier usuario autenticado (para el dropdown)
+router.get('/agents', authMiddleware, async (req, res) => {
+  try {
+    const agents = await authDb.getActiveAgents();
+    res.json(agents);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/users', authMiddleware, async (req, res) => {
   if (!req.user.permisos.includes('gestionar_usuarios')) return res.status(403).json({ error: 'Sin permisos' });
   try {
@@ -44,10 +54,10 @@ router.get('/users', authMiddleware, async (req, res) => {
 
 router.post('/users', authMiddleware, async (req, res) => {
   if (!req.user.permisos.includes('gestionar_usuarios')) return res.status(403).json({ error: 'Sin permisos' });
-  const { username, password, nombre, email, permisos } = req.body;
+  const { username, password, nombre, email, celular, permisos } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
   try {
-    const id = await authDb.createUser({ username, password, nombre, email, permisos: permisos || [] });
+    const id = await authDb.createUser({ username, password, nombre, email, celular, permisos: permisos || [] });
     res.json({ ok: true, id });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'El usuario ya existe' });
@@ -57,9 +67,9 @@ router.post('/users', authMiddleware, async (req, res) => {
 
 router.put('/users/:id', authMiddleware, async (req, res) => {
   if (!req.user.permisos.includes('gestionar_usuarios')) return res.status(403).json({ error: 'Sin permisos' });
-  const { nombre, email, password, activo, permisos } = req.body;
+  const { nombre, email, celular, password, activo, permisos } = req.body;
   try {
-    await authDb.updateUser(req.params.id, { nombre, email, password, activo });
+    await authDb.updateUser(req.params.id, { nombre, email, celular, password, activo });
     if (permisos !== undefined) await authDb.setUserPermisos(req.params.id, permisos);
     res.json({ ok: true });
   } catch (err) {
