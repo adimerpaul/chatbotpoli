@@ -1,4 +1,7 @@
 const pool = require('./connection');
+const bcrypt = require('bcryptjs');
+
+const ALL_PERMS = ['ver_conversaciones','enviar_mensajes','tomar_casos','cambiar_estado','eliminar_conversaciones','gestionar_usuarios','gestionar_bot'];
 
 async function initDB() {
   const conn = await pool.getConnection();
@@ -67,6 +70,47 @@ async function initDB() {
         INDEX idx_softdel (deleted_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    // Tabla: usuarios del panel
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS usuarios (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        username   VARCHAR(50) NOT NULL UNIQUE,
+        password   VARCHAR(255) NOT NULL,
+        nombre     VARCHAR(150) NOT NULL DEFAULT '',
+        email      VARCHAR(150) NULL DEFAULT NULL,
+        activo     TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_username (username)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Tabla: permisos por usuario
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS permisos (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        usuario_id INT NOT NULL,
+        permiso    VARCHAR(50) NOT NULL,
+        CONSTRAINT fk_perm_user FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+        UNIQUE KEY uk_user_perm (usuario_id, permiso)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // Crear usuario admin por defecto si no existe
+    const [[adminRow]] = await conn.query('SELECT id FROM usuarios WHERE username = ?', ['admin']);
+    if (!adminRow) {
+      const hash = await bcrypt.hash('admin1234', 10);
+      await conn.query(
+        'INSERT INTO usuarios (username, password, nombre) VALUES (?, ?, ?)',
+        ['admin', hash, 'Administrador']
+      );
+      const [[newAdmin]] = await conn.query('SELECT id FROM usuarios WHERE username = ?', ['admin']);
+      for (const perm of ALL_PERMS) {
+        await conn.query('INSERT INTO permisos (usuario_id, permiso) VALUES (?, ?)', [newAdmin.id, perm]);
+      }
+      console.log('👤 Usuario admin creado  →  usuario: admin  /  contraseña: admin1234');
+    }
 
     // Columnas opcionales añadidas después del esquema original
     const alteraciones = [

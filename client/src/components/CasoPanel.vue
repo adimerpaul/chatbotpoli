@@ -84,6 +84,11 @@
 
     <!-- Acciones -->
     <div class="sec last-sec">
+      <button class="btn-pdf" @click="exportPdf" :disabled="pdfLoading">
+        <svg v-if="!pdfLoading" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        <span class="spin" v-else></span>
+        {{ pdfLoading ? 'Generando PDF…' : 'Exportar reporte PDF' }}
+      </button>
       <button class="btn-del" @click="deleteCaso">Eliminar caso</button>
     </div>
   </aside>
@@ -92,6 +97,7 @@
 import { computed, ref, watch } from 'vue'
 import { useConversationsStore } from '@/stores/conversations'
 import LeafletMap from './LeafletMap.vue'
+import { generatePdf } from '@/composables/usePdfReport'
 const store = useConversationsStore()
 const sel = computed(() => store.selected)
 const agenteV = ref(sel.value?.agente||'Sin asignar')
@@ -108,9 +114,18 @@ async function patch(changes) {
   store.upsert(u)
 }
 async function deleteCaso() {
-  if(!confirm(`¿Eliminar el caso ${sel.value.id}?`)) return
-  const r = await fetch(`/api/conversations/${sel.value.id}`,{method:'DELETE'}).then(r=>r.json())
-  if(r.ok) store.remove(sel.value.id)
+  const id = sel.value?.id
+  if (!id) return
+  if (!confirm(`¿Eliminar el caso ${id}?`)) return
+  const r = await fetch(`/api/conversations/${id}`, {method:'DELETE'}).then(r=>r.json())
+  if (r.ok) store.remove(id)
+}
+const pdfLoading = ref(false)
+async function exportPdf() {
+  if (!sel.value || pdfLoading.value) return
+  pdfLoading.value = true
+  await new Promise(r => setTimeout(r, 50))
+  try { generatePdf(sel.value) } finally { pdfLoading.value = false }
 }
 const tipoCol = t => ({Emergencia:['#c0392b','#fbe9e7'],Denuncia:['#b9751a','#fbf1e0'],Consulta:['#2f6fed','#e7f0ff']})[t]||['#5a6b82','#eef1f6']
 const prioCol = p => ({Alta:['#c0392b','#fbe9e7'],Media:['#b9751a','#fbf1e0'],Baja:['#1f8a5b','#e6f5ee']})[p]||['#5a6b82','#eef1f6']
@@ -155,5 +170,10 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .ename{font-size:9px;color:#7a8699;text-align:center;word-break:break-all;line-height:1.2}
 .eadd{border:1.5px dashed #cdd5e2 !important;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:22px;cursor:pointer;background:transparent}
 .coords{font-size:11px;color:#7a8699;margin-top:7px;padding-left:2px}
+.btn-pdf{width:100%;border:1px solid #c5d8fd;background:#eef3ff;color:#2f6fed;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:8px;transition:background .15s}
+.btn-pdf:hover:not(:disabled){background:#dce8ff}
+.btn-pdf:disabled{opacity:.6;cursor:default}
+.spin{width:13px;height:13px;border:2px solid #b0c8fd;border-top-color:#2f6fed;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 .btn-del{width:100%;border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer}
 </style>

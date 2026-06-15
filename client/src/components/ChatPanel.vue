@@ -10,8 +10,17 @@
         <div class="hmeta">{{ sel.id }} · {{ sel.channel }}<span v-if="sel.phone"> · +{{ sel.phone }}</span></div>
       </div>
       <div class="hright">
-        <span v-if="sel.agente==='Sin asignar'" class="agent-muted">Bot activo</span>
-        <div v-else class="agent-info">Atiende<br><strong>{{ sel.agente }}</strong></div>
+        <div class="responder-toggle">
+          <span class="toggle-lbl" :class="{active: isBotActive}">Bot IA</span>
+          <button class="toggle-track" :class="{human: !isBotActive}" @click="toggleResponder" :title="isBotActive?'Cambiar a persona':'Cambiar a Bot IA'">
+            <span class="toggle-thumb"></span>
+          </button>
+          <span class="toggle-lbl" :class="{active: !isBotActive}">Persona</span>
+        </div>
+        <div class="toggle-sub">
+          <span v-if="isBotActive">Responde el asistente IA</span>
+          <span v-else>Responde <strong>{{ operatorName }}</strong></span>
+        </div>
       </div>
     </div>
 
@@ -63,8 +72,12 @@
 <script setup>
 import { ref, watch, nextTick, computed } from 'vue'
 import { useConversationsStore } from '@/stores/conversations'
+import { useAuthStore } from '@/stores/auth'
 const store = useConversationsStore()
+const auth  = useAuthStore()
 const sel = computed(() => store.selected)
+const isBotActive = computed(() => sel.value?.agente === 'Sin asignar')
+const operatorName = computed(() => auth.user?.nombre || auth.user?.username || 'Operador')
 const text = ref('')
 const threadEl = ref(null)
 watch(() => sel.value?.messages?.length, async () => { await nextTick(); if(threadEl.value) threadEl.value.scrollTop=threadEl.value.scrollHeight }, { immediate:true })
@@ -72,6 +85,12 @@ async function send() {
   const t=text.value.trim(); if(!t||!sel.value) return
   text.value=''
   const u = await fetch(`/api/conversations/${sel.value.id}/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})}).then(r=>r.json())
+  store.upsert(u)
+}
+async function toggleResponder() {
+  if (!sel.value) return
+  const agente = isBotActive.value ? operatorName.value : 'Sin asignar'
+  const u = await fetch(`/api/conversations/${sel.value.id}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({agente})}).then(r=>r.json())
   store.upsert(u)
 }
 const tipoCol = t => ({Emergencia:['#c0392b','#fbe9e7'],Denuncia:['#b9751a','#fbf1e0'],Consulta:['#2f6fed','#e7f0ff']})[t]||['#5a6b82','#eef1f6']
@@ -85,8 +104,16 @@ const bs = ([fg,bg]) => ({display:'inline-flex',padding:'3px 10px',borderRadius:
 .htitle-row{display:flex;align-items:center;gap:9px}
 .hname{font-weight:700;font-size:15px;color:#15233a}
 .hmeta{font-size:12px;color:#7a8699;margin-top:2px;font-family:'IBM Plex Mono',monospace}
-.hright{text-align:right}.agent-muted{font-size:12px;color:#9aa6b6;font-weight:500}
-.agent-info{font-size:12px;color:#5a6b82}.agent-info strong{font-weight:600;color:#15233a}
+.hright{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.responder-toggle{display:flex;align-items:center;gap:8px}
+.toggle-lbl{font-size:12px;color:#9aa6b6;font-weight:500;transition:color .2s}
+.toggle-lbl.active{color:#15233a;font-weight:700}
+.toggle-track{position:relative;width:40px;height:22px;border-radius:999px;border:none;cursor:pointer;padding:0;transition:background .25s;background:#9aa6b6;flex-shrink:0}
+.toggle-track.human{background:#2f6fed}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .25s;display:block;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle-track.human .toggle-thumb{transform:translateX(18px)}
+.toggle-sub{font-size:11px;color:#7a8699}
+.toggle-sub strong{color:#15233a;font-weight:600}
 .thread{flex:1;overflow:auto;min-height:0;padding:20px 22px;display:flex;flex-direction:column;gap:4px}
 .sys-msg{display:flex;justify-content:center;margin:8px 0}.sys-msg span{font-size:11px;color:#7a8699;background:#e8edf4;padding:5px 14px;border-radius:999px;font-weight:500}
 .msg-row{display:flex}.msg-row.right{justify-content:flex-end}.msg-row.left{justify-content:flex-start}

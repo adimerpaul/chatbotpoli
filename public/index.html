@@ -37,6 +37,35 @@
 <script>
 "use strict";
 
+/* ===================== AUTENTICACIÓN ===================== */
+(function(){
+  if (!localStorage.getItem('cac_token')) window.location.replace('/login');
+})();
+
+function authFetch(url, options) {
+  options = options || {};
+  var token = localStorage.getItem('cac_token');
+  options.headers = Object.assign({}, options.headers || {}, { 'Authorization': 'Bearer ' + token });
+  return fetch(url, options).then(function(r) {
+    if (r.status === 401) {
+      localStorage.removeItem('cac_token');
+      localStorage.removeItem('cac_user');
+      window.location.replace('/login');
+      return new Promise(function(){});
+    }
+    return r;
+  });
+}
+
+function currentUser() {
+  try { return JSON.parse(localStorage.getItem('cac_user') || 'null'); } catch(e) { return null; }
+}
+
+function hasPerm(perm) {
+  var u = currentUser();
+  return u && Array.isArray(u.permisos) && u.permisos.indexOf(perm) >= 0;
+}
+
 /* ===================== ESTADO ===================== */
 var leafletMap = null;
 
@@ -51,7 +80,10 @@ var state = {
   convs: [],
   waStatus: 'connecting',
   qrDataUrl: null,
-  waPhone: ''
+  waPhone: '',
+  usuariosData: null,
+  allPermisos: [],
+  _userModal: false
 };
 
 /* ===================== HELPERS ===================== */
@@ -77,7 +109,7 @@ var socket = io();
 
 socket.on('connect', function(){
   // Al conectar, pedir el estado actual como respaldo (por si el evento llegó antes)
-  fetch('/api/status').then(function(r){ return r.json(); }).then(function(s){
+  authFetch('/api/status').then(function(r){ return r.json(); }).then(function(s){
     if (s.status === 'ready') {
       state.waStatus = 'ready';
       state.waPhone = s.phone || '';
@@ -142,6 +174,8 @@ function dispatch(action, el){
     case 'view-stats': state.view='stats'; render(); break;
     case 'view-agentes': state.view='agentes'; render(); break;
     case 'view-whatsapp': state.view='whatsapp'; render(); break;
+    case 'view-usuarios': loadUsuarios(); break;
+    case 'logout': doLogout(); break;
     case 'filter-tipo': state.filterTipo=el.getAttribute('data-val'); render(); break;
     case 'select-conv':
       state.selectedId=el.getAttribute('data-id');
@@ -157,7 +191,7 @@ function dispatch(action, el){
 /* ===================== ACCIONES API ===================== */
 function apiPatch(conv, changes) {
   if (!conv) return;
-  fetch('/api/conversations/' + conv.id, {
+  authFetch('/api/conversations/' + conv.id, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(changes)
@@ -169,7 +203,7 @@ function apiPatch(conv, changes) {
 
 function apiTomar(conv) {
   if (!conv) return;
-  fetch('/api/conversations/' + conv.id + '/tomar', {
+  authFetch('/api/conversations/' + conv.id + '/tomar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
@@ -182,7 +216,7 @@ function apiTomar(conv) {
 function apiDelete(conv) {
   if (!conv) return;
   if (!confirm('¿Eliminar el caso ' + conv.id + '? Esta acción no se puede deshacer desde el panel.')) return;
-  fetch('/api/conversations/' + conv.id, { method: 'DELETE' })
+  authFetch('/api/conversations/' + conv.id, { method: 'DELETE' })
     .then(function(r){ return r.json(); })
     .then(function(res){
       if (res.ok) {
@@ -199,7 +233,7 @@ function apiSend() {
   state.composer = '';
   state._focus = 'composer';
   render();
-  fetch('/api/conversations/' + s.id + '/send', {
+  authFetch('/api/conversations/' + s.id + '/send', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text: txt })
@@ -256,7 +290,7 @@ function waBadge() {
 function renderShell(content){
   var v=state.view;
   var countNuevos = state.convs.filter(function(c){return c.estado==='Nuevo';}).length;
-  var titles={ bandeja:['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'], mapa:['Mapa de incidentes','Distribución geográfica de casos en Oruro'], stats:['Estadísticas','Indicadores de gestión del centro de atención'], agentes:['Agentes','Disponibilidad y carga de casos del personal'], whatsapp:['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'] };
+  var titles={ bandeja:['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'], mapa:['Mapa de incidentes','Distribución geográfica de casos en Oruro'], stats:['Estadísticas','Indicadores de gestión del centro de atención'], agentes:['Agentes','Disponibilidad y carga de casos del personal'], whatsapp:['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'], usuarios:['Gestión de Usuarios','Administración de cuentas y permisos del panel'] };
   var tt=titles[v]||titles.bandeja;
 
   return '<div style="height:100vh;display:flex;background:#eef1f6;color:#1a2433;overflow:hidden">'
@@ -273,9 +307,20 @@ function renderShell(content){
       + navItem('view-agentes','#9b7fe0','Agentes', v==='agentes', null)
       + '<div style="font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:14px 12px 8px">CANALES</div>'
       + navItem('view-whatsapp', state.waStatus==='ready'?'#3fae7a':state.waStatus==='qr'?'#d6a23a':'#64769a', 'Conectar celular WA', v==='whatsapp', state.waStatus==='qr'?'!':null)
+      + (hasPerm('gestionar_usuarios') ? '<div style="font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:14px 12px 8px">ADMINISTRACIÓN</div>' + navItem('view-usuarios','#e87d3e','Gestionar usuarios', v==='usuarios', null) : '')
       + '<div style="margin-top:auto;padding:14px 12px 6px"><div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px"><div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa0c0;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:#3fae7a;animation:livedot 1.8s infinite"></span>ASISTENTE IA ACTIVO</div><div style="font-size:11.5px;color:#aab8d0;margin-top:7px;line-height:1.5">Clasificando mensajes entrantes y resumiendo en tiempo real.</div></div></div>'
     + '</div>'
-    + '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px"><div style="width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0">OG</div><div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Of. Gutiérrez</div><div style="font-size:11px;color:#8aa0c0">Operador · Turno A</div></div><span style="width:8px;height:8px;border-radius:50%;background:#3fae7a;flex-shrink:0"></span></div>'
+    + (function(){
+        var u = currentUser();
+        var initials = u ? (u.nombre||u.username||'?').slice(0,2).toUpperCase() : '??';
+        var nombre = u ? (u.nombre||u.username||'Usuario') : 'Usuario';
+        var rol = (u && u.permisos && u.permisos.indexOf('gestionar_usuarios')>=0) ? 'Administrador' : 'Operador';
+        return '<div style="padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px">'
+          + '<div style="width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0">'+esc(initials)+'</div>'
+          + '<div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(nombre)+'</div><div style="font-size:11px;color:#8aa0c0">'+esc(rol)+'</div></div>'
+          + '<button data-action="logout" title="Cerrar sesión" style="border:none;background:rgba(255,255,255,.08);color:#8aa0c0;border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0" onclick="doLogout()">↩</button>'
+        + '</div>';
+      })()
   + '</aside>'
   + '<div style="flex:1;display:flex;flex-direction:column;min-width:0">'
     + '<header style="height:62px;flex-shrink:0;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;padding:0 22px;gap:18px">'
@@ -663,6 +708,198 @@ function initCasoMap() {
     .openPopup();
 }
 
+/* ===================== LOGOUT ===================== */
+function doLogout() {
+  localStorage.removeItem('cac_token');
+  localStorage.removeItem('cac_user');
+  window.location.replace('/login');
+}
+
+/* ===================== GESTIÓN DE USUARIOS ===================== */
+var PERM_LABELS = {
+  ver_conversaciones:     'Ver conversaciones',
+  enviar_mensajes:        'Enviar mensajes',
+  tomar_casos:            'Tomar casos',
+  cambiar_estado:         'Cambiar estado/agente',
+  eliminar_conversaciones:'Eliminar conversaciones',
+  gestionar_usuarios:     'Gestionar usuarios',
+  gestionar_bot:          'Configurar bot/WA'
+};
+
+function loadUsuarios() {
+  state.view = 'usuarios';
+  render();
+  authFetch('/api/auth/users')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      state.usuariosData = data.users || [];
+      state.allPermisos = data.allPermisos || [];
+      render();
+    });
+}
+
+function renderUsuarios() {
+  var users = state.usuariosData;
+  if (!users) {
+    return '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#9aa6b6;font-size:14px">Cargando usuarios...</div>';
+  }
+
+  var rows = users.map(function(u) {
+    var permBadges = (u.permisos||[]).map(function(p){
+      return '<span style="background:#e7f0ff;color:#2f6fed;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;display:inline-block;margin:2px">'+esc(PERM_LABELS[p]||p)+'</span>';
+    }).join('') || '<span style="font-size:11.5px;color:#9aa6b6">Sin permisos</span>';
+
+    var actBadge = u.activo
+      ? '<span style="background:#e6f5ee;color:#1f8a5b;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px">Activo</span>'
+      : '<span style="background:#eef1f6;color:#7a8699;font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px">Inactivo</span>';
+
+    var initials = (u.nombre||u.username||'?').slice(0,2).toUpperCase();
+
+    return '<div style="background:#fff;border:1px solid #e6ebf2;border-radius:12px;padding:18px;display:flex;gap:16px;align-items:flex-start">'
+      + '<div style="width:42px;height:42px;border-radius:50%;background:#e7f0ff;color:#2f6fed;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0">'+esc(initials)+'</div>'
+      + '<div style="flex:1;min-width:0">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px"><span style="font-size:14px;font-weight:700;color:#15233a">'+esc(u.nombre||u.username)+'</span>'+actBadge+'</div>'
+        + '<div style="font-size:12px;color:#7a8699;font-family:\'IBM Plex Mono\',monospace;margin-bottom:10px">@'+esc(u.username)+(u.email?' · '+esc(u.email):'')+'</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:0">'+permBadges+'</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:7px;flex-shrink:0">'
+        + '<button onclick="openEditUser('+u.id+')" style="border:1px solid #e3e8f0;background:#f7f9fc;color:#5a6b82;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer">Editar</button>'
+        + '<button onclick="deleteUser('+u.id+',\''+esc(u.username)+'\')" style="border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer">Eliminar</button>'
+      + '</div>'
+    + '</div>';
+  }).join('');
+
+  return '<div style="height:100%;overflow:auto;padding:28px 32px">'
+    + '<div style="max-width:860px;margin:0 auto">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">'
+        + '<div><div style="font-size:18px;font-weight:700;color:#15233a">Gestión de Usuarios</div><div style="font-size:12.5px;color:#7a8699;margin-top:3px">Administra las cuentas y permisos del panel</div></div>'
+        + '<button onclick="openNewUser()" style="background:#0a1f3c;color:#fff;border:none;font-size:13.5px;font-weight:600;padding:10px 20px;border-radius:10px;cursor:pointer">+ Nuevo usuario</button>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:12px">'
+        + (rows || '<div style="text-align:center;color:#9aa6b6;padding:40px;font-size:14px">No hay usuarios registrados</div>')
+      + '</div>'
+    + '</div>'
+  + '</div>'
+  + renderUserModal();
+}
+
+var _editingUser = null;
+
+function renderUserModal() {
+  if (!state._userModal) return '';
+  var u = _editingUser;
+  var isNew = !u;
+  var title = isNew ? 'Nuevo usuario' : 'Editar usuario: @'+esc(u ? u.username : '');
+  var perms = state.allPermisos || [];
+  var permChecks = perms.map(function(p) {
+    var checked = u && u.permisos && u.permisos.indexOf(p) >= 0;
+    return '<label style="display:flex;align-items:center;gap:9px;padding:9px 12px;border:1px solid #e3e8f0;border-radius:8px;cursor:pointer;background:#fafbfd">'
+      + '<input type="checkbox" id="perm_'+p+'" '+(checked?'checked':'')+' style="width:15px;height:15px;cursor:pointer">'
+      + '<span style="font-size:13px;color:#33405a">'+esc(PERM_LABELS[p]||p)+'</span>'
+    + '</label>';
+  }).join('');
+
+  return '<div id="user-modal" style="position:fixed;inset:0;background:rgba(10,31,60,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px">'
+    + '<div style="background:#fff;border-radius:16px;padding:32px;width:100%;max-width:500px;max-height:90vh;overflow:auto;box-shadow:0 24px 64px rgba(0,0,0,.3)">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">'
+        + '<div style="font-size:17px;font-weight:700;color:#0a1f3c">'+title+'</div>'
+        + '<button onclick="closeUserModal()" style="border:none;background:none;font-size:22px;color:#9aa6b6;cursor:pointer;line-height:1">×</button>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:16px">'
+        + '<div><label style="display:block;font-size:11.5px;font-weight:600;color:#5a6b82;margin-bottom:6px;text-transform:uppercase">Usuario</label>'
+          + '<input id="um_username" '+(isNew?'':'disabled')+'value="'+esc(isNew?'':u.username)+'" placeholder="nombre_usuario" style="width:100%;padding:10px 13px;border:1.5px solid #dce3ed;border-radius:8px;font-size:13.5px;outline:none;'+(isNew?'':'background:#f5f7fa;color:#7a8699;')+'" /></div>'
+        + '<div><label style="display:block;font-size:11.5px;font-weight:600;color:#5a6b82;margin-bottom:6px;text-transform:uppercase">Nombre completo</label>'
+          + '<input id="um_nombre" value="'+esc(isNew?'':(u.nombre||''))+'" placeholder="Nombre y apellido" style="width:100%;padding:10px 13px;border:1.5px solid #dce3ed;border-radius:8px;font-size:13.5px;outline:none" /></div>'
+        + '<div><label style="display:block;font-size:11.5px;font-weight:600;color:#5a6b82;margin-bottom:6px;text-transform:uppercase">Email</label>'
+          + '<input id="um_email" type="email" value="'+esc(isNew?'':(u.email||''))+'" placeholder="correo@ejemplo.com" style="width:100%;padding:10px 13px;border:1.5px solid #dce3ed;border-radius:8px;font-size:13.5px;outline:none" /></div>'
+        + '<div><label style="display:block;font-size:11.5px;font-weight:600;color:#5a6b82;margin-bottom:6px;text-transform:uppercase">'+(isNew?'Contraseña':'Nueva contraseña (dejar vacío para no cambiar)')+'</label>'
+          + '<input id="um_password" type="password" placeholder="••••••••" style="width:100%;padding:10px 13px;border:1.5px solid #dce3ed;border-radius:8px;font-size:13.5px;outline:none" /></div>'
+        + (!isNew ? '<div><label style="display:flex;align-items:center;gap:9px;cursor:pointer"><input type="checkbox" id="um_activo" '+(u.activo?'checked':'')+' style="width:15px;height:15px"><span style="font-size:13px;color:#33405a;font-weight:500">Usuario activo</span></label></div>' : '')
+        + '<div><div style="font-size:11.5px;font-weight:600;color:#5a6b82;margin-bottom:10px;text-transform:uppercase">Permisos</div><div style="display:flex;flex-direction:column;gap:7px">'+permChecks+'</div></div>'
+        + '<div id="um_error" style="color:#c0392b;font-size:13px;display:none"></div>'
+        + '<div style="display:flex;gap:10px;margin-top:6px">'
+          + '<button onclick="saveUser()" style="flex:1;background:#0a1f3c;color:#fff;border:none;font-size:14px;font-weight:600;padding:12px;border-radius:9px;cursor:pointer">'+( isNew?'Crear usuario':'Guardar cambios')+'</button>'
+          + '<button onclick="closeUserModal()" style="border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:14px;font-weight:500;padding:12px 18px;border-radius:9px;cursor:pointer">Cancelar</button>'
+        + '</div>'
+      + '</div>'
+    + '</div>'
+  + '</div>';
+}
+
+function openNewUser() {
+  _editingUser = null;
+  state._userModal = true;
+  render();
+}
+
+function openEditUser(id) {
+  _editingUser = (state.usuariosData||[]).find(function(u){ return u.id === id; }) || null;
+  state._userModal = true;
+  render();
+}
+
+function closeUserModal() {
+  state._userModal = false;
+  render();
+}
+
+function saveUser() {
+  var errEl = document.getElementById('um_error');
+  if (errEl) { errEl.style.display='none'; errEl.textContent=''; }
+
+  var username = (document.getElementById('um_username')||{}).value || '';
+  var nombre   = (document.getElementById('um_nombre')||{}).value || '';
+  var email    = (document.getElementById('um_email')||{}).value || '';
+  var password = (document.getElementById('um_password')||{}).value || '';
+  var activo   = document.getElementById('um_activo') ? document.getElementById('um_activo').checked : true;
+
+  var permisos = (state.allPermisos||[]).filter(function(p){
+    var el = document.getElementById('perm_'+p);
+    return el && el.checked;
+  });
+
+  var isNew = !_editingUser;
+
+  if (isNew && !username.trim()) {
+    if (errEl) { errEl.textContent='El nombre de usuario es requerido'; errEl.style.display='block'; }
+    return;
+  }
+  if (isNew && !password) {
+    if (errEl) { errEl.textContent='La contraseña es requerida para un nuevo usuario'; errEl.style.display='block'; }
+    return;
+  }
+
+  var url = isNew ? '/api/auth/users' : '/api/auth/users/' + _editingUser.id;
+  var method = isNew ? 'POST' : 'PUT';
+  var body = isNew
+    ? { username: username.trim(), password: password, nombre: nombre.trim(), email: email.trim()||null, permisos: permisos }
+    : { nombre: nombre.trim(), email: email.trim()||null, permisos: permisos, activo: activo };
+  if (!isNew && password) body.password = password;
+
+  authFetch(url, {
+    method: method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r){ return r.json(); }).then(function(res){
+    if (res.error) {
+      if (errEl) { errEl.textContent = res.error; errEl.style.display='block'; }
+      return;
+    }
+    state._userModal = false;
+    loadUsuarios();
+  });
+}
+
+function deleteUser(id, username) {
+  if (!confirm('¿Eliminar el usuario @'+username+'? Esta acción no se puede deshacer.')) return;
+  authFetch('/api/auth/users/'+id, { method: 'DELETE' })
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res.error) { alert(res.error); return; }
+      loadUsuarios();
+    });
+}
+
 /* ===================== RENDER PRINCIPAL ===================== */
 function render(){
   var content;
@@ -670,6 +907,7 @@ function render(){
   else if(state.view==='stats') content=renderStats();
   else if(state.view==='mapa') content=renderMapa();
   else if(state.view==='whatsapp') content=renderWhatsapp();
+  else if(state.view==='usuarios') content=renderUsuarios();
   else content=renderAgentes();
 
   document.getElementById('app').innerHTML = renderShell(content);
@@ -684,7 +922,7 @@ function render(){
 
 /* ===================== ACCIONES WHATSAPP ===================== */
 function waReset() {
-  fetch('/api/wa/reset', { method: 'POST' })
+  authFetch('/api/wa/reset', { method: 'POST' })
     .then(function(r){ return r.json(); })
     .then(function(){
       state.waStatus = 'connecting';
@@ -695,7 +933,7 @@ function waReset() {
 
 function dbTruncate() {
   if (!confirm('¿Eliminar TODAS las conversaciones y mensajes de la base de datos? Esta acción no se puede deshacer.')) return;
-  fetch('/api/db/truncate', { method: 'POST' })
+  authFetch('/api/db/truncate', { method: 'POST' })
     .then(function(r){ return r.json(); })
     .then(function(res){
       if (res.ok) {
@@ -711,7 +949,7 @@ function dbTruncate() {
 /* ===================== INICIO ===================== */
 render();
 
-fetch('/api/conversations')
+authFetch('/api/conversations')
   .then(function(r){ return r.json(); })
   .then(function(convs){
     state.convs = convs;

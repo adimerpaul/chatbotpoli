@@ -13,8 +13,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.56.0",
     "@whiskeysockets/baileys": "^6.7.18",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.22.5",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",

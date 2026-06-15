@@ -6,6 +6,8 @@ const path = require('path');
 
 const store = require('./store/conversations');
 const apiRoutes = require('./routes/api');
+const authRoutes = require('./routes/auth');
+const { authMiddleware } = require('./middleware/auth');
 const { connectWhatsApp, getWAInfo } = require('./bot/whatsapp');
 const initDB = require('./db/init');
 const db = require('./db/service');
@@ -25,7 +27,17 @@ store.on('demo-cleared', (ids) => {
 app.set('io', io);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
-app.use('/api', apiRoutes);
+
+// Auth routes (sin protección — login público)
+app.use('/api/auth', authRoutes);
+
+// Todas las demás rutas API requieren token JWT válido
+app.use('/api', authMiddleware, apiRoutes);
+
+// Página de login
+app.get('/login', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/login.html'));
+});
 
 // History mode: devolver index.html para cualquier ruta que no sea API ni assets
 app.get('*', (req, res, next) => {

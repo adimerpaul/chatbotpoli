@@ -72,6 +72,7 @@
 import { computed, onMounted } from 'vue'
 import { useWhatsappStore } from '@/stores/whatsapp'
 import { useConversationsStore } from '@/stores/conversations'
+import { apiFetch } from '@/lib/api'
 const wa = useWhatsappStore()
 const convs = useConversationsStore()
 const statusTitle = computed(()=>({ready:'WhatsApp conectado correctamente',qr:'Código QR listo — escanéalo ahora',connecting:'Iniciando conexión con WhatsApp...'}[wa.status]??''))
@@ -84,18 +85,18 @@ const infoCards = computed(()=>[
 ])
 
 onMounted(async () => {
-  const r = await fetch('/api/bot/status').then(r=>r.json())
+  const r = await apiFetch('/api/bot/status').then(r=>r.json()).catch(()=>({enabled:true}))
   wa.setBotEnabled(r.enabled)
 })
 
 async function toggleBot() {
-  const r = await fetch('/api/bot/toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: !wa.botEnabled }) }).then(r=>r.json())
+  const r = await apiFetch('/api/bot/toggle', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ enabled: !wa.botEnabled }) }).then(r=>r.json())
   wa.setBotEnabled(r.enabled)
 }
-async function waReset() { await fetch('/api/wa/reset',{method:'POST'}); wa.setConnecting() }
+async function waReset() { await apiFetch('/api/wa/reset',{method:'POST'}); wa.setConnecting() }
 async function dbTruncate() {
   if(!confirm('¿Eliminar TODAS las conversaciones? No reversible.')) return
-  const r=await fetch('/api/db/truncate',{method:'POST'}).then(r=>r.json())
+  const r=await apiFetch('/api/db/truncate',{method:'POST'}).then(r=>r.json())
   if(r.ok) convs.clear(); else alert('Error: '+(r.error||'desconocido'))
 }
 </script>

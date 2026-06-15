@@ -1,5 +1,9 @@
 <template>
-  <div class="app-layout">
+  <!-- En la página de login sólo mostrar el RouterView -->
+  <RouterView v-if="route.name === 'login'" />
+
+  <!-- Layout principal del panel -->
+  <div v-else class="app-layout">
     <aside class="sidebar">
       <div class="sidebar-brand">
         <div class="brand-logo">PB</div>
@@ -29,15 +33,25 @@
           Conectar celular WA
           <span v-if="wa.status==='qr'" class="nav-badge">!</span>
         </RouterLink>
+        <template v-if="auth.hasPerm('gestionar_usuarios')">
+          <div class="nav-label" style="margin-top:10px">ADMINISTRACIÓN</div>
+          <RouterLink to="/usuarios" class="nav-item">
+            <span class="nav-dot" style="background:#e87d3e"></span>
+            Gestionar usuarios
+          </RouterLink>
+        </template>
         <div class="ai-card">
           <div class="ai-card-head"><span class="ai-live-dot"></span>ASISTENTE IA ACTIVO</div>
           <div class="ai-card-body">Clasificando mensajes entrantes y resumiendo en tiempo real.</div>
         </div>
       </nav>
       <div class="sidebar-user">
-        <div class="user-av">OG</div>
-        <div><div class="user-name">Of. Gutiérrez</div><div class="user-sub">Operador · Turno A</div></div>
-        <span class="user-online"></span>
+        <div class="user-av">{{ userInitials }}</div>
+        <div class="user-info">
+          <div class="user-name">{{ auth.user?.nombre || auth.user?.username || 'Usuario' }}</div>
+          <div class="user-sub">{{ auth.hasPerm('gestionar_usuarios') ? 'Administrador' : 'Operador' }}</div>
+        </div>
+        <button class="logout-btn" title="Cerrar sesión" @click="logout">↩</button>
       </div>
     </aside>
 
@@ -52,7 +66,6 @@
           <span class="search-icon"></span>
           <input v-model="convStore.search" placeholder="Buscar folio, ciudadano o delito…" class="search-inp" />
         </div>
-        <!-- WA badge -->
         <RouterLink to="/whatsapp" class="wa-badge" :class="wa.status">
           <span class="wa-dot"></span>
           {{ wa.status==='ready'?'WhatsApp activo': wa.status==='qr'?'📱 Escanea QR':'WA conectando...' }}
@@ -65,34 +78,49 @@
 
 <script setup>
 import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useConversationsStore } from '@/stores/conversations'
 import { useWhatsappStore } from '@/stores/whatsapp'
+import { useAuthStore } from '@/stores/auth'
 import { useSocket } from '@/composables/useSocket'
+import { apiFetch } from '@/lib/api'
 
 const route = useRoute()
+const router = useRouter()
 const convStore = useConversationsStore()
 const wa = useWhatsappStore()
-useSocket()
+const auth = useAuthStore()
+if (auth.isLoggedIn) useSocket()
 
 const newCount = computed(() => convStore.convs.filter(c => c.unread).length || null)
 const waDot = computed(() => wa.status==='ready'?'#3fae7a':wa.status==='qr'?'#d6a23a':'#64769a')
+const userInitials = computed(() => {
+  const name = auth.user?.nombre || auth.user?.username || '?'
+  return name.slice(0, 2).toUpperCase()
+})
 
 const META = {
   '/bandeja':  ['Bandeja de atención','Conversaciones entrantes del chatbot ciudadano'],
   '/mapa':     ['Mapa de incidentes','Distribución geográfica de casos en Oruro'],
   '/stats':    ['Estadísticas','Indicadores de gestión del centro de atención'],
-  '/whatsapp': ['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano']
+  '/whatsapp': ['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'],
+  '/usuarios': ['Gestión de Usuarios','Administración de cuentas y permisos del panel']
 }
 const pageTitle = computed(() => (META[route.path]||META['/bandeja'])[0])
 const pageSub   = computed(() => (META[route.path]||META['/bandeja'])[1])
 
+function logout() {
+  auth.logout()
+  router.replace('/login')
+}
+
 onMounted(async () => {
-  const s = await fetch('/api/status').then(r=>r.json()).catch(()=>({}))
+  if (!auth.isLoggedIn) return
+  const s = await apiFetch('/api/status').then(r=>r.json()).catch(()=>({}))
   if (s.status==='ready') wa.setReady(s.phone)
   else if (s.status==='qr' && s.qrDataUrl) wa.setQR(s.qrDataUrl)
-  const list = await fetch('/api/conversations').then(r=>r.json()).catch(()=>[])
-  convStore.setAll(list)
+  const list = await apiFetch('/api/conversations').then(r=>r.json()).catch(()=>[])
+  convStore.setAll(Array.isArray(list) ? list : [])
 })
 </script>
 
@@ -102,7 +130,7 @@ onMounted(async () => {
 .sidebar-brand{padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.08)}
 .brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#2f6fed,#5b8def);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;box-shadow:0 4px 14px rgba(47,111,237,.4)}
 .brand-name{font-weight:700;font-size:14px;color:#fff}.brand-sub{font-size:11px;color:#8aa0c0;margin-top:2px}
-.sidebar-nav{padding:14px 12px;flex:1;display:flex;flex-direction:column;gap:2px}
+.sidebar-nav{padding:14px 12px;flex:1;display:flex;flex-direction:column;gap:2px;overflow:auto}
 .nav-label{font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:6px 12px 8px}
 .nav-item{position:relative;display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;font-size:13.5px;font-weight:500;color:#dbe4f3;text-decoration:none}
 .nav-item:hover{background:rgba(255,255,255,.06)}
@@ -113,10 +141,13 @@ onMounted(async () => {
 .ai-card-head{display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa0c0;font-weight:600}
 .ai-live-dot{width:7px;height:7px;border-radius:50%;background:#3fae7a;animation:livedot 1.8s infinite;flex-shrink:0}
 .ai-card-body{font-size:11.5px;color:#aab8d0;margin-top:7px;line-height:1.5}
-.sidebar-user{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px}
+.sidebar-user{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px;flex-shrink:0}
 .user-av{width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0}
-.user-name{font-size:13px;font-weight:600;color:#fff}.user-sub{font-size:11px;color:#8aa0c0}
-.user-online{width:8px;height:8px;border-radius:50%;background:#3fae7a;margin-left:auto;flex-shrink:0}
+.user-info{flex:1;min-width:0}
+.user-name{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-sub{font-size:11px;color:#8aa0c0}
+.logout-btn{border:none;background:rgba(255,255,255,.08);color:#8aa0c0;border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
+.logout-btn:hover{background:rgba(255,255,255,.16);color:#fff}
 .main-col{flex:1;display:flex;flex-direction:column;min-width:0}
 .topbar{height:62px;flex-shrink:0;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;padding:0 22px;gap:18px}
 .page-title{font-size:16px;font-weight:700;color:#15233a}.page-sub{font-size:12px;color:#7a8699;margin-top:1px}
@@ -129,4 +160,5 @@ onMounted(async () => {
 .wa-badge.connecting{color:#5a6b82;background:#eef1f6;border:1px solid #e0e5ee}
 .wa-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
 .main-content{flex:1;min-height:0;overflow:hidden}
+@keyframes livedot{0%,100%{opacity:1}50%{opacity:.3}}
 </style>

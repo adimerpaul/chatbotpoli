@@ -280,6 +280,7 @@ async function handleIncoming(msg) {
   // Persistir en BD
   const conv = store.get(phone);
   const ciudadanoId = await db.upsertCiudadano(phone, waName || null);
+  // console.log('ciudadanoId:', ciudadanoId);
   if (ciudadanoId) {
     await db.upsertConversacion(conv.id, ciudadanoId);
     const dbTexto = content.type === 'location'

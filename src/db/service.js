@@ -55,15 +55,41 @@ async function upsertCiudadano(phone, nombre = null) {
 // Inserta la conversación si no existe; devuelve su ID de BD
 async function upsertConversacion(folio, ciudadanoId) {
   try {
-    await pool.query(
-      'INSERT IGNORE INTO conversaciones (folio, ciudadano_id) VALUES (?, ?)',
-      [folio, ciudadanoId]
-    );
-    const [[row]] = await pool.query(
-      'SELECT id FROM conversaciones WHERE folio = ? AND deleted_at IS NULL',
+    // console.log(folio, ciudadanoId)
+    // await pool.query(
+    //   'INSERT IGNORE INTO conversaciones (folio, ciudadano_id) VALUES (?, ?)',
+    //   [folio, ciudadanoId]
+    // );
+    // const [[row]] = await pool.query(
+    //   'SELECT id FROM conversaciones WHERE folio = ? AND deleted_at IS NULL',
+    //   [folio]
+    // );
+    // return row?.id ?? null;
+    const findCoversacion = await pool.query(
+      'SELECT id FROM conversaciones WHERE folio = ? AND deleted_at IS NULL and estado != "Cerrado"',
       [folio]
     );
-    return row?.id ?? null;
+    if (findCoversacion[0].length === 0) {
+      await pool.query(
+        'INSERT INTO conversaciones (folio, ciudadano_id) VALUES (?, ?)',
+        [folio, ciudadanoId]
+      );
+      const [[row]] = await pool.query(
+        'SELECT id FROM conversaciones WHERE folio = ? AND deleted_at IS NULL',
+        [folio]
+      );
+      return row?.id ?? null;
+    }else{
+      await pool.query(
+        'UPDATE conversaciones SET updated_at = NOW() WHERE folio = ? AND deleted_at IS NULL',
+        [folio]
+      );
+      const [[row]] = await pool.query(
+        'SELECT id FROM conversaciones WHERE folio = ? AND deleted_at IS NULL',
+        [folio]
+      );
+      return row?.id ?? null;
+    }
   } catch (err) {
     console.error('[DB] upsertConversacion:', err.message);
     return null;
