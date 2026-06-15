@@ -297,9 +297,9 @@ async function handleIncoming(msg) {
 
   // El bot solo responde a mensajes de texto; para media avisa que lo revisarán
   const convCheck = store.get(phone);
-  if (convCheck.agente !== 'Sin asignar') {
-    console.log(`[MSG] caso asignado a "${convCheck.agente}" — bot no responde`);
-    return;
+  const asignado = convCheck.agente !== 'Sin asignar';
+  if (asignado) {
+    console.log(`[MSG] caso asignado a "${convCheck.agente}" — bot responde igual (KB activa)`);
   }
 
   if (!botEnabled) {
