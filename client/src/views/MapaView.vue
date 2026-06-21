@@ -69,7 +69,9 @@ onUnmounted(()=>{ if(map){map.remove();map=null} })
 </script>
 <style scoped>
 .mapa-view{height:100%;display:flex}
-.map-area{flex:1;min-width:0;min-height:0}
+/* isolation:isolate crea un stacking context propio para Leaflet,
+   sus z-indexes internos (200-600) ya no compiten con el sidebar */
+.map-area{flex:1;min-width:0;min-height:0;isolation:isolate}
 .mapa-side{width:300px;flex-shrink:0;border-left:1px solid #e0e5ee;background:#fff;overflow:auto;padding:20px}
 .side-title{font-size:14px;font-weight:700;color:#15233a;margin-bottom:16px}
 .zona-list{display:flex;flex-direction:column;gap:10px}

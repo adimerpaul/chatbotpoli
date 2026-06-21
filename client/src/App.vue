@@ -4,17 +4,17 @@
 
   <!-- Layout principal del panel -->
   <div v-else class="app-shell">
-    <!-- Overlay para cerrar sidebar en móvil -->
-    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen=false"></div>
+    <!-- Overlay oscuro (solo móvil, cuando sidebar está abierto) -->
+    <div v-if="mobileOpen" class="sidebar-backdrop" @click="mobileOpen=false"></div>
 
-    <aside class="sidebar" :class="{ open: sidebarOpen }">
+    <aside class="sidebar" :class="{ 'mob-open': mobileOpen, 'desk-collapsed': desktopCollapsed }">
       <div class="sidebar-brand">
         <div class="brand-logo">PB</div>
         <div class="brand-text">
           <div class="brand-name">Policía Boliviana</div>
           <div class="brand-sub">Comando Oruro · CAC</div>
         </div>
-        <button class="sidebar-close-btn" @click="sidebarOpen=false" title="Cerrar menú">✕</button>
+        <button class="sidebar-close-btn" @click="mobileOpen=false" title="Cerrar menú">✕</button>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-label">OPERACIÓN</div>
@@ -66,7 +66,7 @@
     <div class="main-col">
       <header class="topbar">
         <!-- Botón toggle del menú (siempre visible) -->
-        <button class="menu-toggle-btn" @click="sidebarOpen=!sidebarOpen" :title="sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'">
+        <button class="menu-toggle-btn" @click="toggleSidebar" :title="desktopCollapsed || !mobileOpen ? 'Mostrar menú' : 'Ocultar menú'">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
             <line x1="3" y1="6" x2="21" y2="6"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
@@ -108,10 +108,21 @@ const wa = useWhatsappStore()
 const auth = useAuthStore()
 if (auth.isLoggedIn) useSocket()
 
-const sidebarOpen = ref(false)
+// Desktop: sidebar colapsa (ancho → 0). Empieza expandido.
+const desktopCollapsed = ref(false)
+// Móvil: sidebar se desliza desde la izquierda. Empieza cerrado.
+const mobileOpen = ref(false)
 
-// Cerrar sidebar al cambiar de ruta
-watch(() => route.path, () => { sidebarOpen.value = false })
+function toggleSidebar() {
+  if (window.innerWidth <= 767) {
+    mobileOpen.value = !mobileOpen.value
+  } else {
+    desktopCollapsed.value = !desktopCollapsed.value
+  }
+}
+
+// Cerrar sidebar móvil al cambiar de ruta
+watch(() => route.path, () => { mobileOpen.value = false })
 
 const newCount = computed(() => convStore.convs.filter(c => c.unread).length || null)
 const waDot = computed(() => wa.status==='ready'?'#3fae7a':wa.status==='qr'?'#d6a23a':'#64769a')
@@ -150,8 +161,10 @@ onMounted(async () => {
 /* Shell wrapper */
 .app-shell { height: 100vh; display: flex; overflow: hidden; background: #eef1f6; color: #1a2433; position: relative; }
 
-/* Sidebar */
-.sidebar { width: 252px; flex-shrink: 0; background: linear-gradient(180deg,#0b2545,#0a1f3c); color: #dbe4f3; display: flex; flex-direction: column; transition: transform .25s ease, width .2s ease; z-index: 100; }
+/* Sidebar — Desktop: colapsa por ancho. Móvil: slide desde la izquierda. */
+.sidebar { width: 252px; flex-shrink: 0; overflow: hidden; background: linear-gradient(180deg,#0b2545,#0a1f3c); color: #dbe4f3; display: flex; flex-direction: column; transition: width .25s ease; z-index: 1000; }
+/* Desktop: toggle oculta colapsando el ancho */
+.sidebar.desk-collapsed { width: 0; }
 .sidebar-brand { padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.08); min-height: 62px; }
 .brand-logo { width: 42px; height: 42px; border-radius: 11px; background: linear-gradient(135deg,#2f6fed,#5b8def); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; box-shadow: 0 4px 14px rgba(47,111,237,.4); flex-shrink: 0; }
 .brand-text { flex: 1; min-width: 0; }
@@ -196,14 +209,15 @@ onMounted(async () => {
 .wa-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .main-content { flex: 1; min-height: 0; overflow: hidden; }
 
-/* Sidebar backdrop (móvil) */
-.sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 99; }
+/* Backdrop — solo se muestra en móvil (v-if=mobileOpen) */
+.sidebar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 999; }
 
 @keyframes livedot { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
 
 /* ── Tablet (768–1150px) ─────────────────────────────── */
-@media (max-width: 1150px) {
+@media (min-width: 768px) and (max-width: 1150px) {
   .sidebar { width: 200px; }
+  .sidebar.desk-collapsed { width: 0; }
   .brand-sub { display: none; }
   .search-wrap { width: 180px; }
   .wa-badge-txt { display: none; }
@@ -214,12 +228,13 @@ onMounted(async () => {
   .sidebar {
     position: fixed;
     left: 0; top: 0; bottom: 0;
-    width: 272px;
-    z-index: 200;
+    width: 272px !important;   /* anular desk-collapsed en móvil */
+    overflow: auto !important;
+    z-index: 1000;
     transform: translateX(-100%);
+    transition: transform .28s ease;
   }
-  .sidebar.open { transform: translateX(0); }
-  .sidebar-backdrop { display: block; }
+  .sidebar.mob-open { transform: translateX(0); }
   .sidebar-close-btn { display: flex; align-items: center; justify-content: center; }
   .topbar { padding: 0 12px; gap: 10px; }
   .search-wrap { display: none; }

@@ -48,7 +48,7 @@ const store = useConversationsStore()
     right: 0; top: 62px; bottom: 0;
     width: 340px;
     flex: none;
-    z-index: 50;
+    z-index: 500;
     transform: translateX(100%);
     transition: transform .3s ease;
     background: #fff;
@@ -57,7 +57,7 @@ const store = useConversationsStore()
   }
   .p-caso.caso-open { transform: translateX(0); }
   .caso-backdrop {
-    position: fixed; inset: 0; z-index: 49;
+    position: fixed; inset: 0; z-index: 499;
     background: rgba(0,0,0,.3);
   }
 }
