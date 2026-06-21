@@ -295,19 +295,32 @@ async function handleIncoming(msg) {
     }
   }
 
-  // El bot solo responde a mensajes de texto; para media avisa que lo revisarán
   const convCheck = store.get(phone);
-  const asignado = convCheck.agente !== 'Sin asignar';
-  if (asignado) {
-    console.log(`[MSG] caso asignado a "${convCheck.agente}" — bot responde igual (KB activa)`);
+  const modoManual = convCheck.agente !== 'Sin asignar'; // toggle "Persona" activo
+
+  // El análisis IA corre siempre (actualiza tipo, prioridad, delito) aunque no responda el bot
+  if (content.type === 'text') {
+    const analysis = await analyzeConversation(store.get(phone).messages);
+    if (analysis) {
+      store.update(phone, analysis);
+      await db.updateConversacion(convCheck.id, analysis);
+      console.log(`[MSG] tipo actualizado → ${analysis.tipo} (${analysis.prioridad})`);
+    }
   }
 
+  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
+
+  // --- Decidir si el bot responde ---
   if (!botEnabled) {
-    console.log(`[MSG] bot desactivado — sin respuesta automática`);
-    if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
+    console.log(`[MSG] bot desactivado globalmente — sin respuesta automática`);
+    return;
+  }
+  if (modoManual) {
+    console.log(`[MSG] modo manual (${convCheck.agente}) — responde el operador, bot silenciado`);
     return;
   }
 
+  // Bot responde
   let botText;
   if (content.type === 'text') {
     console.log(`[MSG] generando respuesta con Claude...`);
@@ -333,20 +346,8 @@ async function handleIncoming(msg) {
     }
     store.addMessage(phone, { from: 'bot', type: 'text', text: botText, time: tBot });
     await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
+    if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
   }
-
-  // El análisis corre SIEMPRE en mensajes de texto, independientemente de si el bot respondió.
-  // Es lo que actualiza tipo, prioridad y delito en tiempo real.
-  if (content.type === 'text') {
-    const analysis = await analyzeConversation(store.get(phone).messages);
-    if (analysis) {
-      store.update(phone, analysis);
-      await db.updateConversacion(convCheck.id, analysis);
-      console.log(`[MSG] tipo actualizado → ${analysis.tipo} (${analysis.prioridad})`);
-    }
-  }
-
-  if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
 }
 
 async function sendMessage(phone, text) {
