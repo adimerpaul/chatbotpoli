@@ -17,15 +17,19 @@
       </div>
       <div class="hright">
         <div class="responder-toggle">
-          <span class="toggle-lbl" :class="{active: isBotActive}">Bot IA</span>
-          <button class="toggle-track" :class="{human: !isBotActive}" @click="toggleResponder" :title="isBotActive?'Cambiar a persona':'Cambiar a Bot IA'">
-            <span class="toggle-thumb"></span>
+          <button
+            class="toggle-pill"
+            :class="isBotActive ? 'pill-ia' : 'pill-human'"
+            @click="toggleResponder"
+            :title="isBotActive ? 'Click para que responda un operador' : 'Click para que responda la IA'"
+          >
+            <span class="pill-dot"></span>
+            <span class="pill-label">{{ isBotActive ? '🤖 IA respondiendo' : '👤 Operador responde' }}</span>
           </button>
-          <span class="toggle-lbl" :class="{active: !isBotActive}">Persona</span>
         </div>
         <div class="toggle-sub">
-          <span v-if="isBotActive">Responde el asistente IA</span>
-          <span v-else>Responde <strong>{{ operatorName }}</strong></span>
+          <span v-if="isBotActive">El bot contesta automáticamente</span>
+          <span v-else>Bot silenciado · responde <strong>{{ operatorName }}</strong></span>
         </div>
         <!-- Botón ver detalle (tablet) -->
         <button class="tab-detail-btn" @click="store.showCasoPanel=!store.showCasoPanel" title="Ver detalle del caso">
@@ -120,13 +124,17 @@ const bs = ([fg,bg]) => ({display:'inline-flex',padding:'3px 10px',borderRadius:
 .hname{font-weight:700;font-size:15px;color:#15233a}
 .hmeta{font-size:12px;color:#7a8699;margin-top:2px;font-family:'IBM Plex Mono',monospace}
 .hright{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
-.responder-toggle{display:flex;align-items:center;gap:8px}
-.toggle-lbl{font-size:12px;color:#9aa6b6;font-weight:500;transition:color .2s}
-.toggle-lbl.active{color:#15233a;font-weight:700}
-.toggle-track{position:relative;width:40px;height:22px;border-radius:999px;border:none;cursor:pointer;padding:0;transition:background .25s;background:#9aa6b6;flex-shrink:0}
-.toggle-track.human{background:#2f6fed}
-.toggle-thumb{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .25s;display:block;box-shadow:0 1px 3px rgba(0,0,0,.2)}
-.toggle-track.human .toggle-thumb{transform:translateX(18px)}
+.responder-toggle{display:flex;align-items:center}
+.toggle-pill{display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 8px;border-radius:999px;border:1.5px solid;cursor:pointer;font-size:12.5px;font-weight:600;transition:all .2s}
+.pill-ia{background:#eef3ff;border-color:#2f6fed;color:#1a3a7c}
+.pill-ia:hover{background:#dce8ff}
+.pill-human{background:#fdf3ff;border-color:#9333ea;color:#5b1fa8}
+.pill-human:hover{background:#f3e8ff}
+.pill-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;animation:pulse-dot 2s infinite}
+.pill-ia .pill-dot{background:#2f6fed}
+.pill-human .pill-dot{background:#9333ea}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.4}}
+.pill-label{white-space:nowrap}
 .toggle-sub{font-size:11px;color:#7a8699}
 .toggle-sub strong{color:#15233a;font-weight:600}
 .thread{flex:1;overflow:auto;min-height:0;padding:20px 22px;display:flex;flex-direction:column;gap:4px}
@@ -168,7 +176,8 @@ const bs = ([fg,bg]) => ({display:'inline-flex',padding:'3px 10px',borderRadius:
   .mob-back,.mob-detail{border:1px solid #e3e8f0;background:#f1f4f9;color:#5a6b82;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer}
   .mob-back:hover,.mob-detail:hover{background:#e3e8f0;color:#15233a}
   .chat-header{padding:10px 12px;gap:10px}
-  .hright{display:none}
+  .hright{display:flex;flex-direction:row;align-items:center;gap:8px}
+  .toggle-sub{display:none}
   .hname{font-size:14px}
   .thread{padding:14px 12px}
   .msg-inner{max-width:90%}
