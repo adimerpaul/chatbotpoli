@@ -21,55 +21,126 @@
       </div>
     </div>
     <div class="list-scroll">
-      <div v-for="c in store.filtered" :key="c.id" class="row" :class="{sel:c.id===store.selectedId}" @click="store.select(c.id)">
+      <div
+        v-for="c in store.paginated"
+        :key="c.id"
+        class="row"
+        :class="{ sel: c.id===store.selectedId, cerrado: c.estado==='Cerrado' }"
+        @click="store.select(c.id)"
+      >
         <div class="row-top">
-          <div class="av" :style="avStyle(c.tipo)">{{ c.initials }}</div>
+          <div class="av" :style="avStyle(c.tipo, c.estado)">{{ c.initials }}</div>
           <div class="row-mid">
-            <div class="name-line"><span class="rname">{{ c.name }}</span><span v-if="c.unread" class="udot"></span></div>
+            <div class="name-line">
+              <span class="rname">{{ c.name }}</span>
+              <span v-if="c.unread" class="udot"></span>
+              <span v-if="c.estado==='Cerrado'" class="badge-cerrado">Cerrado</span>
+            </div>
             <div class="rmeta">{{ c.id }} · {{ c.channel }}</div>
           </div>
           <span class="rtime">{{ c.time }}</span>
         </div>
         <div class="rprev">{{ c.preview }}</div>
         <div class="rbadges">
-          <span class="badge" :style="bs(tipoCol(c.tipo))">{{ c.tipo }}</span>
-          <span class="badge" :style="bs(prioCol(c.prioridad))">{{ c.prioridad }}</span>
+          <span class="badge" :style="bs(tipoCol(c.tipo, c.estado))">{{ c.tipo }}</span>
+          <span class="badge" :style="bs(prioCol(c.prioridad, c.estado))">{{ c.prioridad }}</span>
           <span class="rzona">· {{ c.zona }}</span>
         </div>
       </div>
       <div v-if="!store.filtered.length" class="empty">Sin resultados</div>
     </div>
+
+    <!-- Paginación -->
+    <div class="pagination" v-if="store.totalPages > 1">
+      <button class="pg-btn" :disabled="store.currentPage===1" @click="store.setPage(1)" title="Primera">«</button>
+      <button class="pg-btn" :disabled="store.currentPage===1" @click="store.setPage(store.currentPage-1)" title="Anterior">‹</button>
+      <button
+        v-for="n in pageNumbers"
+        :key="n"
+        class="pg-btn"
+        :class="{ active: n===store.currentPage }"
+        @click="store.setPage(n)"
+      >{{ n }}</button>
+      <button class="pg-btn" :disabled="store.currentPage===store.totalPages" @click="store.setPage(store.currentPage+1)" title="Siguiente">›</button>
+      <button class="pg-btn" :disabled="store.currentPage===store.totalPages" @click="store.setPage(store.totalPages)" title="Última">»</button>
+      <span class="pg-info">{{ store.currentPage }}/{{ store.totalPages }}</span>
+    </div>
   </section>
 </template>
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useConversationsStore } from '@/stores/conversations'
 import { apiFetch } from '@/lib/api'
 
 const store = useConversationsStore()
 const loading = ref(false)
 
+// ── Paginación ──────────────────────────────────────────────────────────────
+const pageNumbers = computed(() => {
+  const total = store.totalPages
+  const cur   = store.currentPage
+  const pages = []
+  for (let i = Math.max(1, cur - 2); i <= Math.min(total, cur + 2); i++) pages.push(i)
+  return pages
+})
+
+// ── Recarga desde BD ────────────────────────────────────────────────────────
 async function reload() {
   if (loading.value) return
   loading.value = true
   try {
     const list = await apiFetch('/api/db/reload', { method: 'POST' }).then(r => r.json())
     store.setAll(Array.isArray(list) ? list : [])
-  } catch (e) {
-    console.error('[reload]', e)
-  } finally {
-    loading.value = false
-  }
+  } catch (e) { console.error('[reload]', e) }
+  finally { loading.value = false }
 }
+
+// ── Alerta de voz para emergencias nuevas (Web Speech API) ──────────────────
+const alertedIds = new Set()
+
+onMounted(() => {
+  store.convs.forEach(c => alertedIds.add(c.id))
+})
+
+watch(() => store.convs.length, () => {
+  store.convs.forEach(c => {
+    if (alertedIds.has(c.id)) return
+    alertedIds.add(c.id)
+    const age = Date.now() - (c.createdAt || 0)
+    if (c.tipo === 'Emergencia' && age < 15000) speakEmergency()
+  })
+})
+
+function speakEmergency() {
+  if (!window.speechSynthesis) return
+  window.speechSynthesis.cancel()
+  const u = new SpeechSynthesisUtterance('Atención. Entró una emergencia al sistema.')
+  u.lang = 'es-ES'
+  u.rate = 0.82
+  u.pitch = 0.7
+  u.volume = 1
+  window.speechSynthesis.speak(u)
+}
+
+// ── Colores ─────────────────────────────────────────────────────────────────
 const tipos = [
   {val:'Todos',      label:'Todos',       cls:'chip-dark'},
   {val:'Emergencia', label:'Emergencias', cls:'chip-red'},
   {val:'Denuncia',   label:'Denuncias',   cls:'chip-orange'},
   {val:'Consulta',   label:'Consultas',   cls:'chip-blue'}
 ]
-const tipoCol = t => ({Emergencia:['#c0392b','#fbe9e7'],Denuncia:['#b9751a','#fbf1e0'],Consulta:['#2f6fed','#e7f0ff']})[t]||['#5a6b82','#eef1f6']
-const prioCol = p => ({Alta:['#c0392b','#fbe9e7'],Media:['#b9751a','#fbf1e0'],Baja:['#1f8a5b','#e6f5ee']})[p]||['#5a6b82','#eef1f6']
-const avStyle = t => { const [fg,bg]=tipoCol(t); return {width:'38px',height:'38px',borderRadius:'11px',background:bg,color:fg,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'600',fontSize:'14px',flexShrink:'0'} }
+function tipoCol(t, estado) {
+  if (estado === 'Cerrado') return ['#8a96a8','#eef1f6']
+  return ({Emergencia:['#c0392b','#fbe9e7'],Denuncia:['#b9751a','#fbf1e0'],Consulta:['#2f6fed','#e7f0ff']})[t]||['#5a6b82','#eef1f6']
+}
+function prioCol(p, estado) {
+  if (estado === 'Cerrado') return ['#8a96a8','#eef1f6']
+  return ({Alta:['#c0392b','#fbe9e7'],Media:['#b9751a','#fbf1e0'],Baja:['#1f8a5b','#e6f5ee']})[p]||['#5a6b82','#eef1f6']
+}
+function avStyle(t, estado) {
+  const [fg,bg] = tipoCol(t, estado)
+  return {width:'38px',height:'38px',borderRadius:'11px',background:bg,color:fg,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:'600',fontSize:'14px',flexShrink:'0'}
+}
 const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px 10px',borderRadius:'999px',fontSize:'11px',fontWeight:'600',color:fg,background:bg})
 </script>
 <style scoped>
@@ -92,9 +163,17 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .btn-refresh svg.spinning{animation:spin-refresh .8s linear infinite}
 @keyframes spin-refresh{to{transform:rotate(360deg)}}
 .list-scroll{flex:1;overflow:auto;min-height:0}
-.row{padding:13px 15px;border-bottom:1px solid #f1f4f9;cursor:pointer;display:flex;flex-direction:column;gap:7px;background:#fff}
+.row{padding:13px 15px;border-bottom:1px solid #f1f4f9;cursor:pointer;display:flex;flex-direction:column;gap:7px;background:#fff;transition:background .12s}
 .row.sel{background:#f5f8ff;box-shadow:inset 3px 0 0 #2f6fed}
 .row:hover:not(.sel){background:#fafbfd}
+/* Cerrado */
+.row.cerrado{background:#f8f9fb}
+.row.cerrado .rname{color:#8a96a8}
+.row.cerrado .rprev{color:#aab2bf}
+.row.cerrado .rzona{color:#b5bec9}
+.row.cerrado .rtime{color:#b5bec9}
+.row.cerrado:hover:not(.sel){background:#f3f4f7}
+.badge-cerrado{font-size:10px;font-weight:600;color:#7a8699;background:#eef1f6;border-radius:99px;padding:2px 7px}
 .row-top{display:flex;align-items:center;gap:10px}
 .row-mid{flex:1;min-width:0}
 .name-line{display:flex;align-items:center;gap:6px}
@@ -106,4 +185,11 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .rbadges{display:flex;align-items:center;gap:6px;margin-left:48px;flex-wrap:wrap}
 .rzona{font-size:11px;color:#8a96a8}
 .empty{padding:30px;text-align:center;color:#9aa6b6;font-size:13px}
+/* Paginación */
+.pagination{display:flex;align-items:center;gap:4px;padding:10px 14px;border-top:1px solid #eef1f6;background:#fff;flex-shrink:0}
+.pg-btn{min-width:30px;height:30px;padding:0 6px;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:7px;font-size:13px;color:#5a6b82;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .12s,color .12s}
+.pg-btn:hover:not(:disabled){background:#e3e8f0;color:#15233a}
+.pg-btn:disabled{opacity:.4;cursor:default}
+.pg-btn.active{background:#2f6fed;border-color:#2f6fed;color:#fff;font-weight:600}
+.pg-info{margin-left:auto;font-size:11.5px;color:#9aa6b6;white-space:nowrap}
 </style>

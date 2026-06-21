@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 export const useConversationsStore = defineStore('conversations', () => {
   const convs = ref([])
@@ -9,6 +9,8 @@ export const useConversationsStore = defineStore('conversations', () => {
   const search = ref('')
   const mobileView = ref('list') // 'list' | 'chat' | 'caso'
   const showCasoPanel = ref(false) // tablet: caso slide-over
+  const currentPage = ref(1)
+  const PAGE_SIZE = 10
 
   const selected = computed(() => convs.value.find(c => c.id === selectedId.value) ?? null)
 
@@ -21,6 +23,17 @@ export const useConversationsStore = defineStore('conversations', () => {
     return list
   })
 
+  const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
+
+  const paginated = computed(() => {
+    const p = Math.min(currentPage.value, totalPages.value)
+    const start = (p - 1) * PAGE_SIZE
+    return filtered.value.slice(start, start + PAGE_SIZE)
+  })
+
+  // Vuelve a pág 1 cuando cambia cualquier filtro
+  watch([filterTipo, filterPrioridad, search], () => { currentPage.value = 1 })
+
   const counts = computed(() => {
     const c = { Todos: convs.value.length, Emergencia: 0, Denuncia: 0, Consulta: 0 }
     convs.value.forEach(v => { c[v.tipo] = (c[v.tipo]||0)+1 })
@@ -30,10 +43,9 @@ export const useConversationsStore = defineStore('conversations', () => {
   function upsert(conv) {
     const idx = convs.value.findIndex(c => c.id === conv.id)
     if (idx >= 0) {
-      // Reemplazar in-place primero para que Vue detecte el cambio sin romper
-      // la referencia del computed `selected` — luego mover al inicio
       convs.value[idx] = conv
-      if (idx !== 0) {
+      // Solo sube al top si hay mensaje nuevo del ciudadano; cambios de estado no mueven la fila
+      if (idx !== 0 && conv.unread) {
         convs.value.splice(idx, 1)
         convs.value.unshift(conv)
       }
@@ -42,6 +54,11 @@ export const useConversationsStore = defineStore('conversations', () => {
     }
     if (!selectedId.value) selectedId.value = conv.id
   }
+
+  function setPage(n) {
+    currentPage.value = Math.max(1, Math.min(n, totalPages.value))
+  }
+
   function remove(id) {
     convs.value = convs.value.filter(c => c.id !== id)
     if (selectedId.value === id) selectedId.value = convs.value[0]?.id ?? null
@@ -50,10 +67,10 @@ export const useConversationsStore = defineStore('conversations', () => {
     convs.value = convs.value.filter(c => !ids.includes(c.id))
     if (ids.includes(selectedId.value)) selectedId.value = convs.value[0]?.id ?? null
   }
-  function setAll(list) { convs.value = list; selectedId.value = list[0]?.id ?? null }
-  function clear() { convs.value = []; selectedId.value = null }
+  function setAll(list) { convs.value = list; selectedId.value = list[0]?.id ?? null; currentPage.value = 1 }
+  function clear() { convs.value = []; selectedId.value = null; currentPage.value = 1 }
   function select(id) { selectedId.value = id; const c = convs.value.find(v => v.id === id); if (c) c.unread = false; mobileView.value = 'chat' }
   function setMobileView(v) { mobileView.value = v }
 
-  return { convs, selectedId, filterTipo, filterPrioridad, search, mobileView, showCasoPanel, selected, filtered, counts, upsert, remove, removeMany, setAll, clear, select, setMobileView }
+  return { convs, selectedId, filterTipo, filterPrioridad, search, mobileView, showCasoPanel, selected, filtered, paginated, totalPages, currentPage, counts, upsert, setPage, remove, removeMany, setAll, clear, select, setMobileView }
 })
