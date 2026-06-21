@@ -12,7 +12,7 @@ const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const store = require('../store/conversations');
-const { analyzeConversation, generateBotResponse } = require('./claude');
+const { analyzeConversation, generateBotResponse, findKBFile } = require('./claude');
 const db = require('../db/service');
 const { saveAudit } = require('../db/audit');
 
@@ -329,9 +329,13 @@ async function handleIncoming(msg) {
 
   // Bot responde
   let botText;
+  let kbFile = null;
   if (content.type === 'text') {
     console.log(`[MSG] generando respuesta con Claude...`);
-    botText = await generateBotResponse(convCheck.messages);
+    [botText, kbFile] = await Promise.all([
+      generateBotResponse(convCheck.messages),
+      findKBFile(content.text)
+    ]);
   } else {
     const acks = {
       image:    'Recibimos tu foto. Un agente la revisará pronto.',
@@ -353,6 +357,29 @@ async function handleIncoming(msg) {
     }
     store.addMessage(phone, { from: 'bot', type: 'text', text: botText, time: tBot });
     await db.saveMessage(convCheck.id, { origen: 'bot', texto: botText, hora: tBot });
+
+    // Si hay archivo adjunto en la KB que coincide con la pregunta, enviarlo también
+    if (kbFile?.archivo_url) {
+      try {
+        const filePath = path.join(__dirname, '../../public', kbFile.archivo_url);
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase().replace('.', '');
+          const isImg = ['jpg','jpeg','png','gif','webp'].includes(ext);
+          if (isImg) {
+            await sock.sendMessage(jid, { image: fs.readFileSync(filePath), caption: kbFile.archivo_nombre || '' });
+          } else {
+            const mime = ext === 'pdf' ? 'application/pdf'
+              : ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+              : 'application/octet-stream';
+            await sock.sendMessage(jid, { document: fs.readFileSync(filePath), mimetype: mime, fileName: kbFile.archivo_nombre || `archivo.${ext}` });
+          }
+          console.log(`[MSG] archivo KB enviado: ${kbFile.archivo_url}`);
+        }
+      } catch (err) {
+        console.error('[MSG] Error enviando archivo KB:', err.message);
+      }
+    }
+
     if (ioRef) ioRef.emit('conversation:updated', store.get(phone));
   }
 }

@@ -199,7 +199,9 @@ async function initDB() {
     // Columnas opcionales añadidas después del esquema original
     const alteraciones = [
       "ALTER TABLE conversaciones ADD COLUMN coords VARCHAR(100) NULL DEFAULT NULL",
-      "ALTER TABLE conversaciones ADD COLUMN coords_label VARCHAR(255) NULL DEFAULT NULL"
+      "ALTER TABLE conversaciones ADD COLUMN coords_label VARCHAR(255) NULL DEFAULT NULL",
+      "ALTER TABLE base_conocimiento ADD COLUMN archivo_url VARCHAR(255) NULL DEFAULT NULL",
+      "ALTER TABLE base_conocimiento ADD COLUMN archivo_nombre VARCHAR(255) NULL DEFAULT NULL"
     ];
     for (const sql of alteraciones) {
       try { await conn.query(sql); } catch {} // ignorar si ya existe

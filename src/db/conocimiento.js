@@ -10,7 +10,8 @@ async function getAll({ search = '', page = 1, limit = 10 } = {}) {
   }
   const [[{ total }]] = await pool.query(`SELECT COUNT(*) as total FROM base_conocimiento ${where}`, params);
   const [rows] = await pool.query(
-    `SELECT id, pregunta, respuesta, activo, created_at FROM base_conocimiento ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
+    `SELECT id, pregunta, respuesta, activo, archivo_url, archivo_nombre, created_at
+     FROM base_conocimiento ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
     [...params, Number(limit), offset]
   );
   return { rows, total, pages: Math.ceil(total / Number(limit)) || 1 };
@@ -18,7 +19,7 @@ async function getAll({ search = '', page = 1, limit = 10 } = {}) {
 
 async function getActivos() {
   const [rows] = await pool.query(
-    'SELECT pregunta, respuesta FROM base_conocimiento WHERE activo = 1 ORDER BY id ASC'
+    'SELECT id, pregunta, respuesta, archivo_url, archivo_nombre FROM base_conocimiento WHERE activo = 1 ORDER BY id ASC'
   );
   return rows;
 }
@@ -41,8 +42,15 @@ async function update(id, { pregunta, respuesta, activo }) {
   await pool.query(`UPDATE base_conocimiento SET ${sets.join(', ')} WHERE id = ?`, vals);
 }
 
+async function updateArchivo(id, { archivo_url, archivo_nombre }) {
+  await pool.query(
+    'UPDATE base_conocimiento SET archivo_url = ?, archivo_nombre = ? WHERE id = ?',
+    [archivo_url, archivo_nombre, id]
+  );
+}
+
 async function remove(id) {
   await pool.query('DELETE FROM base_conocimiento WHERE id = ?', [id]);
 }
 
-module.exports = { getAll, getActivos, create, update, remove };
+module.exports = { getAll, getActivos, create, update, updateArchivo, remove };

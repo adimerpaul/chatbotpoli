@@ -33,6 +33,40 @@ async function buildSystemPrompt() {
   }
 }
 
+// Busca si el mensaje del ciudadano coincide con alguna entrada KB que tenga imagen adjunta.
+// Devuelve { archivo_url, archivo_nombre } o null.
+async function findKBFile(userMessage) {
+  try {
+    const entradas = await dbConocimiento.getActivos();
+    const msg = normalize(userMessage);
+    const stopWords = new Set(['que','con','los','las','del','una','para','por','como','cual','son','hay','esta','este','sus','nos','mas','pero','sido']);
+
+    for (const e of entradas) {
+      if (!e.archivo_url) continue;
+      const words = normalize(e.pregunta)
+        .split(/[\s,?¿!¡.;:()\-]+/)
+        .filter(w => w.length > 3 && !stopWords.has(w));
+      const hits = words.filter(w => msg.includes(w));
+      console.log(`[KB-file] entrada #${e.id} → palabras: [${words.join(',')}] | hits: [${hits.join(',')}]`);
+      if (hits.length >= 1) {
+        console.log(`[KB-file] MATCH entrada #${e.id} → ${e.archivo_url}`);
+        return { archivo_url: e.archivo_url, archivo_nombre: e.archivo_nombre };
+      }
+    }
+    console.log('[KB-file] sin match para:', msg);
+    return null;
+  } catch (err) {
+    console.error('[KB-file] error:', err.message);
+    return null;
+  }
+}
+
+function normalize(str) {
+  return (str || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // quitar tildes
+    .replace(/[^\w\s]/g, ' ');
+}
+
 async function analyzeConversation(messages) {
   const relevant = messages.filter(m => m.from !== 'sistema');
   if (relevant.length < 2) return null;
@@ -107,4 +141,4 @@ async function generateBotResponse(messages) {
   }
 }
 
-module.exports = { analyzeConversation, generateBotResponse };
+module.exports = { analyzeConversation, generateBotResponse, findKBFile };
