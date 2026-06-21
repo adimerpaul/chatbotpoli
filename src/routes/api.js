@@ -13,6 +13,23 @@ router.get('/conversations', (_req, res) => {
   res.json(store.getAll());
 });
 
+// Recarga el store en memoria desde la BD
+// Útil cuando se modifican datos directamente en MySQL (ej: borrar deleted_at)
+router.post('/db/reload', async (req, res) => {
+  try {
+    const data = await db.loadAllConversaciones();
+    store.clear();
+    if (data.length > 0) store.load(data);
+    const all = store.getAll();
+    req.app.get('io').emit('conversations:reloaded', all);
+    console.log(`🔄 Store recargado desde BD: ${data.length} conversaciones`);
+    res.json(all);
+  } catch (err) {
+    console.error('[RELOAD]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Truncate completo — limpia todas las tablas y el store en memoria
 router.post('/db/truncate', async (req, res) => {
   try {
@@ -108,7 +125,7 @@ router.delete('/conversations/:id', async (req, res) => {
 
   try {
     await db.deleteConversacion(conv.id);
-    store.remove(conv.phone);
+    store.removeById(conv.id);
     req.app.get('io').emit('conversation:deleted', { id: conv.id });
     res.json({ ok: true });
   } catch (err) {
@@ -132,7 +149,7 @@ router.patch('/conversations/:id', async (req, res) => {
     changes.estado = 'En proceso';
   }
 
-  const updated = store.update(conv.phone, changes);
+  const updated = store.updateById(conv.id, changes);
   await db.updateConversacion(conv.id, changes);
 
   req.app.get('io').emit('conversation:updated', updated);

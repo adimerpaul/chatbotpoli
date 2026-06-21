@@ -11,6 +11,13 @@
         <select v-model="store.filterPrioridad" class="sel">
           <option v-for="p in ['Todas','Alta','Media','Baja']" :key="p">{{ p }}</option>
         </select>
+        <button class="btn-refresh" @click="reload" :disabled="loading" :title="loading ? 'Actualizando…' : 'Actualizar desde base de datos'">
+          <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
       </div>
     </div>
     <div class="list-scroll">
@@ -35,8 +42,25 @@
   </section>
 </template>
 <script setup>
+import { ref } from 'vue'
 import { useConversationsStore } from '@/stores/conversations'
+import { apiFetch } from '@/lib/api'
+
 const store = useConversationsStore()
+const loading = ref(false)
+
+async function reload() {
+  if (loading.value) return
+  loading.value = true
+  try {
+    const list = await apiFetch('/api/db/reload', { method: 'POST' }).then(r => r.json())
+    store.setAll(Array.isArray(list) ? list : [])
+  } catch (e) {
+    console.error('[reload]', e)
+  } finally {
+    loading.value = false
+  }
+}
 const tipos = [
   {val:'Todos',      label:'Todos',       cls:'chip-dark'},
   {val:'Emergencia', label:'Emergencias', cls:'chip-red'},
@@ -62,6 +86,11 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .prio-row{display:flex;align-items:center;gap:9px}
 .prio-label{font-size:11.5px;color:#7a8699;font-weight:500}
 .sel{flex:1;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;padding:6px 9px;font-size:12.5px;color:#1a2433;outline:none;cursor:pointer}
+.btn-refresh{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;cursor:pointer;color:#5a6b82;transition:background .15s,color .15s}
+.btn-refresh:hover:not(:disabled){background:#e3e8f0;color:#15233a}
+.btn-refresh:disabled{opacity:.5;cursor:not-allowed}
+.btn-refresh svg.spinning{animation:spin-refresh .8s linear infinite}
+@keyframes spin-refresh{to{transform:rotate(360deg)}}
 .list-scroll{flex:1;overflow:auto;min-height:0}
 .row{padding:13px 15px;border-bottom:1px solid #f1f4f9;cursor:pointer;display:flex;flex-direction:column;gap:7px;background:#fff}
 .row.sel{background:#f5f8ff;box-shadow:inset 3px 0 0 #2f6fed}
