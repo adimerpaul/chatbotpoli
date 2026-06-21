@@ -7,6 +7,8 @@ export const useConversationsStore = defineStore('conversations', () => {
   const filterTipo = ref('Todos')
   const filterPrioridad = ref('Todas')
   const search = ref('')
+  const mobileView = ref('list') // 'list' | 'chat' | 'caso'
+  const showCasoPanel = ref(false) // tablet: caso slide-over
 
   const selected = computed(() => convs.value.find(c => c.id === selectedId.value) ?? null)
 
@@ -50,7 +52,8 @@ export const useConversationsStore = defineStore('conversations', () => {
   }
   function setAll(list) { convs.value = list; selectedId.value = list[0]?.id ?? null }
   function clear() { convs.value = []; selectedId.value = null }
-  function select(id) { selectedId.value = id; const c = convs.value.find(v => v.id === id); if (c) c.unread = false }
+  function select(id) { selectedId.value = id; const c = convs.value.find(v => v.id === id); if (c) c.unread = false; mobileView.value = 'chat' }
+  function setMobileView(v) { mobileView.value = v }
 
-  return { convs, selectedId, filterTipo, filterPrioridad, search, selected, filtered, counts, upsert, remove, removeMany, setAll, clear, select }
+  return { convs, selectedId, filterTipo, filterPrioridad, search, mobileView, showCasoPanel, selected, filtered, counts, upsert, remove, removeMany, setAll, clear, select, setMobileView }
 })

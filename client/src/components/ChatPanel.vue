@@ -1,5 +1,11 @@
 <template>
   <section class="chat-panel">
+    <!-- Barra de navegación móvil -->
+    <div class="mob-nav">
+      <button class="mob-back" @click="store.setMobileView('list')">← Bandeja</button>
+      <button class="mob-detail" @click="store.setMobileView('caso')">Ver detalle →</button>
+    </div>
+
     <div class="chat-header">
       <div class="av" :style="avStyle(sel.tipo)">{{ sel.initials }}</div>
       <div class="hinfo">
@@ -21,6 +27,10 @@
           <span v-if="isBotActive">Responde el asistente IA</span>
           <span v-else>Responde <strong>{{ operatorName }}</strong></span>
         </div>
+        <!-- Botón ver detalle (tablet) -->
+        <button class="tab-detail-btn" @click="store.showCasoPanel=!store.showCasoPanel" title="Ver detalle del caso">
+          {{ store.showCasoPanel ? 'Cerrar detalle' : 'Ver detalle' }}
+        </button>
       </div>
     </div>
 
@@ -75,6 +85,7 @@ import { useConversationsStore } from '@/stores/conversations'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/lib/api'
 const store = useConversationsStore()
+
 const auth  = useAuthStore()
 const sel = computed(() => store.selected)
 const isBotActive = computed(() => sel.value?.agente === 'Sin asignar')
@@ -99,8 +110,11 @@ const avStyle = t => { const [fg,bg]=tipoCol(t); return {width:'38px',height:'38
 const bs = ([fg,bg]) => ({display:'inline-flex',padding:'3px 10px',borderRadius:'999px',fontSize:'11px',fontWeight:'600',color:fg,background:bg})
 </script>
 <style scoped>
+/* Barra móvil — oculta en desktop */
+.mob-nav{display:none}
+
 .chat-panel{flex:1;min-width:0;display:flex;flex-direction:column;background:#f7f9fc;min-height:0}
-.chat-header{padding:13px 20px;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;gap:13px;flex-shrink:0}
+.chat-header{padding:13px 20px;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;gap:13px;flex-shrink:0;flex-wrap:wrap}
 .av{flex-shrink:0}.hinfo{flex:1;min-width:0}
 .htitle-row{display:flex;align-items:center;gap:9px}
 .hname{font-weight:700;font-size:15px;color:#15233a}
@@ -140,4 +154,28 @@ const bs = ([fg,bg]) => ({display:'inline-flex',padding:'3px 10px',borderRadius:
 .comp-inp{flex:1;border:none;background:transparent;outline:none;font-size:13.5px;color:#1a2433;padding:6px 0}
 .btn-send{border:none;background:#2f6fed;color:#fff;font-weight:600;font-size:13px;padding:9px 18px;border-radius:9px;cursor:pointer;flex-shrink:0}
 .comp-hint{font-size:11px;color:#9aa6b6;margin-top:7px;padding-left:4px}
+
+/* ── Botón detalle (solo tablet) ─── */
+.tab-detail-btn{display:none}
+@media (min-width:768px) and (max-width:1150px){
+  .tab-detail-btn{display:block;border:1px solid #e3e8f0;background:#f1f4f9;color:#5a6b82;font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .15s}
+  .tab-detail-btn:hover{background:#e3e8f0;color:#15233a}
+}
+
+/* ── Móvil ─── */
+@media (max-width:767px){
+  .mob-nav{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-bottom:1px solid #eef1f6;flex-shrink:0;gap:8px}
+  .mob-back,.mob-detail{border:1px solid #e3e8f0;background:#f1f4f9;color:#5a6b82;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer}
+  .mob-back:hover,.mob-detail:hover{background:#e3e8f0;color:#15233a}
+  .chat-header{padding:10px 12px;gap:10px}
+  .hright{display:none}
+  .hname{font-size:14px}
+  .thread{padding:14px 12px}
+  .msg-inner{max-width:90%}
+  .mimg{max-width:180px}
+  .mvid{max-width:180px}
+  .maudio{width:160px}
+  .composer{padding:10px 12px}
+  .comp-hint{display:none}
+}
 </style>

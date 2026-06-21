@@ -1,5 +1,10 @@
 <template>
   <aside class="caso-panel">
+    <!-- Barra de vuelta (solo móvil) -->
+    <div class="mob-back-bar">
+      <button class="mob-back-btn" @click="store.setMobileView('chat')">← Volver al chat</button>
+    </div>
+
     <!-- AI -->
     <div class="sec">
       <div class="sec-title"><span class="sec-dot"></span>Análisis del asistente IA</div>
@@ -183,4 +188,16 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .spin{width:13px;height:13px;border:2px solid #b0c8fd;border-top-color:#2f6fed;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 .btn-del{width:100%;border:1px solid #f5c2c2;background:#fff5f5;color:#c0392b;font-weight:600;font-size:12.5px;padding:10px;border-radius:9px;cursor:pointer}
+
+/* ── Barra de vuelta (solo móvil) ─── */
+.mob-back-bar{display:none}
+@media (max-width:767px){
+  .caso-panel{width:100%;border-left:none}
+  .mob-back-bar{display:flex;padding:8px 14px;background:#fff;border-bottom:1px solid #eef1f6;flex-shrink:0}
+  .mob-back-btn{border:1px solid #e3e8f0;background:#f1f4f9;color:#5a6b82;font-size:12px;font-weight:600;padding:7px 13px;border-radius:8px;cursor:pointer}
+  .mob-back-btn:hover{background:#e3e8f0;color:#15233a}
+}
+@media (min-width:768px) and (max-width:1150px){
+  .caso-panel{width:100%;border-left:none}
+}
 </style>

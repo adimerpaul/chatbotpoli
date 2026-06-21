@@ -3,14 +3,18 @@
   <RouterView v-if="route.name === 'login'" />
 
   <!-- Layout principal del panel -->
-  <div v-else class="app-layout">
-    <aside class="sidebar">
+  <div v-else class="app-shell">
+    <!-- Overlay para cerrar sidebar en móvil -->
+    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen=false"></div>
+
+    <aside class="sidebar" :class="{ open: sidebarOpen }">
       <div class="sidebar-brand">
         <div class="brand-logo">PB</div>
-        <div>
+        <div class="brand-text">
           <div class="brand-name">Policía Boliviana</div>
           <div class="brand-sub">Comando Oruro · CAC</div>
         </div>
+        <button class="sidebar-close-btn" @click="sidebarOpen=false" title="Cerrar menú">✕</button>
       </div>
       <nav class="sidebar-nav">
         <div class="nav-label">OPERACIÓN</div>
@@ -61,7 +65,15 @@
 
     <div class="main-col">
       <header class="topbar">
-        <div>
+        <!-- Botón toggle del menú (siempre visible) -->
+        <button class="menu-toggle-btn" @click="sidebarOpen=!sidebarOpen" :title="sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <div class="topbar-title">
           <div class="page-title">{{ pageTitle }}</div>
           <div class="page-sub">{{ pageSub }}</div>
         </div>
@@ -72,7 +84,7 @@
         </div>
         <RouterLink to="/whatsapp" class="wa-badge" :class="wa.status">
           <span class="wa-dot"></span>
-          {{ wa.status==='ready'?'WhatsApp activo': wa.status==='qr'?'📱 Escanea QR':'WA conectando...' }}
+          <span class="wa-badge-txt">{{ wa.status==='ready'?'WhatsApp activo': wa.status==='qr'?'📱 Escanea QR':'WA conectando...' }}</span>
         </RouterLink>
       </header>
       <main class="main-content"><RouterView /></main>
@@ -81,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useConversationsStore } from '@/stores/conversations'
 import { useWhatsappStore } from '@/stores/whatsapp'
@@ -95,6 +107,11 @@ const convStore = useConversationsStore()
 const wa = useWhatsappStore()
 const auth = useAuthStore()
 if (auth.isLoggedIn) useSocket()
+
+const sidebarOpen = ref(false)
+
+// Cerrar sidebar al cambiar de ruta
+watch(() => route.path, () => { sidebarOpen.value = false })
 
 const newCount = computed(() => convStore.convs.filter(c => c.unread).length || null)
 const waDot = computed(() => wa.status==='ready'?'#3fae7a':wa.status==='qr'?'#d6a23a':'#64769a')
@@ -130,40 +147,84 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.app-layout{height:100vh;display:flex;overflow:hidden;background:#eef1f6;color:#1a2433}
-.sidebar{width:252px;flex-shrink:0;background:linear-gradient(180deg,#0b2545,#0a1f3c);color:#dbe4f3;display:flex;flex-direction:column}
-.sidebar-brand{padding:20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid rgba(255,255,255,.08)}
-.brand-logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#2f6fed,#5b8def);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;box-shadow:0 4px 14px rgba(47,111,237,.4)}
-.brand-name{font-weight:700;font-size:14px;color:#fff}.brand-sub{font-size:11px;color:#8aa0c0;margin-top:2px}
-.sidebar-nav{padding:14px 12px;flex:1;display:flex;flex-direction:column;gap:2px;overflow:auto}
-.nav-label{font-size:10px;font-weight:600;letter-spacing:1px;color:#64769a;padding:6px 12px 8px}
-.nav-item{position:relative;display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;font-size:13.5px;font-weight:500;color:#dbe4f3;text-decoration:none}
-.nav-item:hover{background:rgba(255,255,255,.06)}
-.nav-item.router-link-active{background:rgba(91,141,239,.16);box-shadow:inset 3px 0 0 #5b8def}
-.nav-dot{width:8px;height:8px;border-radius:3px;flex-shrink:0}
-.nav-badge{margin-left:auto;font-size:11px;font-weight:600;background:#c0392b;color:#fff;padding:1px 7px;border-radius:999px}
-.ai-card{margin-top:auto;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px}
-.ai-card-head{display:flex;align-items:center;gap:8px;font-size:11px;color:#8aa0c0;font-weight:600}
-.ai-live-dot{width:7px;height:7px;border-radius:50%;background:#3fae7a;animation:livedot 1.8s infinite;flex-shrink:0}
-.ai-card-body{font-size:11.5px;color:#aab8d0;margin-top:7px;line-height:1.5}
-.sidebar-user{padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:11px;flex-shrink:0}
-.user-av{width:36px;height:36px;border-radius:50%;background:#1d3a66;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:#cfe0ff;flex-shrink:0}
-.user-info{flex:1;min-width:0}
-.user-name{font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.user-sub{font-size:11px;color:#8aa0c0}
-.logout-btn{border:none;background:rgba(255,255,255,.08);color:#8aa0c0;border-radius:7px;width:30px;height:30px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
-.logout-btn:hover{background:rgba(255,255,255,.16);color:#fff}
-.main-col{flex:1;display:flex;flex-direction:column;min-width:0}
-.topbar{height:62px;flex-shrink:0;background:#fff;border-bottom:1px solid #e0e5ee;display:flex;align-items:center;padding:0 22px;gap:18px}
-.page-title{font-size:16px;font-weight:700;color:#15233a}.page-sub{font-size:12px;color:#7a8699;margin-top:1px}
-.search-wrap{display:flex;align-items:center;gap:9px;background:#f1f4f9;border:1px solid #e3e8f0;border-radius:10px;padding:8px 13px;width:260px}
-.search-icon{width:14px;height:14px;border:2px solid #9aa6b6;border-radius:50%;flex-shrink:0}
-.search-inp{border:none;background:transparent;outline:none;font-size:13px;color:#1a2433;width:100%}
-.wa-badge{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:9px;text-decoration:none}
-.wa-badge.ready{color:#1f8a5b;background:#eaf6ef;border:1px solid #cdeada}
-.wa-badge.qr{color:#b9751a;background:#fbf1e0;border:1px solid #f5d9a0}
-.wa-badge.connecting{color:#5a6b82;background:#eef1f6;border:1px solid #e0e5ee}
-.wa-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
-.main-content{flex:1;min-height:0;overflow:hidden}
-@keyframes livedot{0%,100%{opacity:1}50%{opacity:.3}}
+/* Shell wrapper */
+.app-shell { height: 100vh; display: flex; overflow: hidden; background: #eef1f6; color: #1a2433; position: relative; }
+
+/* Sidebar */
+.sidebar { width: 252px; flex-shrink: 0; background: linear-gradient(180deg,#0b2545,#0a1f3c); color: #dbe4f3; display: flex; flex-direction: column; transition: transform .25s ease, width .2s ease; z-index: 100; }
+.sidebar-brand { padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.08); min-height: 62px; }
+.brand-logo { width: 42px; height: 42px; border-radius: 11px; background: linear-gradient(135deg,#2f6fed,#5b8def); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px; color: #fff; box-shadow: 0 4px 14px rgba(47,111,237,.4); flex-shrink: 0; }
+.brand-text { flex: 1; min-width: 0; }
+.brand-name { font-weight: 700; font-size: 14px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-sub { font-size: 11px; color: #8aa0c0; margin-top: 2px; }
+.sidebar-close-btn { display: none; border: none; background: rgba(255,255,255,.1); color: #8aa0c0; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font-size: 14px; flex-shrink: 0; transition: background .15s; }
+.sidebar-close-btn:hover { background: rgba(255,255,255,.2); color: #fff; }
+.sidebar-nav { padding: 14px 12px; flex: 1; display: flex; flex-direction: column; gap: 2px; overflow: auto; }
+.nav-label { font-size: 10px; font-weight: 600; letter-spacing: 1px; color: #64769a; padding: 6px 12px 8px; }
+.nav-item { position: relative; display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 9px; font-size: 13.5px; font-weight: 500; color: #dbe4f3; text-decoration: none; }
+.nav-item:hover { background: rgba(255,255,255,.06); }
+.nav-item.router-link-active { background: rgba(91,141,239,.16); box-shadow: inset 3px 0 0 #5b8def; }
+.nav-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.nav-badge { margin-left: auto; font-size: 11px; font-weight: 600; background: #c0392b; color: #fff; padding: 1px 7px; border-radius: 999px; }
+.ai-card { margin-top: auto; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 13px; }
+.ai-card-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #8aa0c0; font-weight: 600; }
+.ai-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #3fae7a; animation: livedot 1.8s infinite; flex-shrink: 0; }
+.ai-card-body { font-size: 11.5px; color: #aab8d0; margin-top: 7px; line-height: 1.5; }
+.sidebar-user { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,.08); display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
+.user-av { width: 36px; height: 36px; border-radius: 50%; background: #1d3a66; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; color: #cfe0ff; flex-shrink: 0; }
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-sub { font-size: 11px; color: #8aa0c0; }
+.logout-btn { border: none; background: rgba(255,255,255,.08); color: #8aa0c0; border-radius: 7px; width: 30px; height: 30px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .15s; }
+.logout-btn:hover { background: rgba(255,255,255,.16); color: #fff; }
+
+/* Main column */
+.main-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar { height: 62px; flex-shrink: 0; background: #fff; border-bottom: 1px solid #e0e5ee; display: flex; align-items: center; padding: 0 18px; gap: 14px; }
+.menu-toggle-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 1px solid #e3e8f0; border-radius: 9px; background: #f1f4f9; color: #5a6b82; cursor: pointer; flex-shrink: 0; transition: background .15s, color .15s; }
+.menu-toggle-btn:hover { background: #e3e8f0; color: #15233a; }
+.topbar-title { min-width: 0; }
+.page-title { font-size: 16px; font-weight: 700; color: #15233a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.page-sub { font-size: 12px; color: #7a8699; margin-top: 1px; }
+.search-wrap { display: flex; align-items: center; gap: 9px; background: #f1f4f9; border: 1px solid #e3e8f0; border-radius: 10px; padding: 8px 13px; width: 260px; flex-shrink: 0; }
+.search-icon { width: 14px; height: 14px; border: 2px solid #9aa6b6; border-radius: 50%; flex-shrink: 0; }
+.search-inp { border: none; background: transparent; outline: none; font-size: 13px; color: #1a2433; width: 100%; }
+.wa-badge { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 9px; text-decoration: none; flex-shrink: 0; }
+.wa-badge.ready { color: #1f8a5b; background: #eaf6ef; border: 1px solid #cdeada; }
+.wa-badge.qr { color: #b9751a; background: #fbf1e0; border: 1px solid #f5d9a0; }
+.wa-badge.connecting { color: #5a6b82; background: #eef1f6; border: 1px solid #e0e5ee; }
+.wa-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.main-content { flex: 1; min-height: 0; overflow: hidden; }
+
+/* Sidebar backdrop (móvil) */
+.sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 99; }
+
+@keyframes livedot { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+
+/* ── Tablet (768–1150px) ─────────────────────────────── */
+@media (max-width: 1150px) {
+  .sidebar { width: 200px; }
+  .brand-sub { display: none; }
+  .search-wrap { width: 180px; }
+  .wa-badge-txt { display: none; }
+}
+
+/* ── Móvil (< 768px) ─────────────────────────────────── */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 272px;
+    z-index: 200;
+    transform: translateX(-100%);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop { display: block; }
+  .sidebar-close-btn { display: flex; align-items: center; justify-content: center; }
+  .topbar { padding: 0 12px; gap: 10px; }
+  .search-wrap { display: none; }
+  .page-sub { display: none; }
+  .wa-badge-txt { display: none; }
+  .page-title { font-size: 14px; }
+}
 </style>

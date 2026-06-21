@@ -50,6 +50,7 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 </script>
 <style scoped>
 .conv-list{width:384px;flex-shrink:0;border-right:1px solid #e0e5ee;background:#fff;display:flex;flex-direction:column;min-height:0}
+@media (max-width:1150px){.conv-list{width:100%}}
 .filters{padding:13px 14px;border-bottom:1px solid #eef1f6;display:flex;flex-direction:column;gap:11px}
 .chips{display:flex;gap:7px;flex-wrap:wrap}
 .chip{border:1px solid #e3e8f0;background:#fff;color:#5a6b82;font-size:12px;font-weight:500;padding:6px 11px;border-radius:8px;cursor:pointer;display:inline-flex;gap:5px;align-items:center}

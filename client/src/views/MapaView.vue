@@ -69,8 +69,8 @@ onUnmounted(()=>{ if(map){map.remove();map=null} })
 </script>
 <style scoped>
 .mapa-view{height:100%;display:flex}
-.map-area{flex:1;min-width:0}
-.mapa-side{width:330px;flex-shrink:0;border-left:1px solid #e0e5ee;background:#fff;overflow:auto;padding:20px}
+.map-area{flex:1;min-width:0;min-height:0}
+.mapa-side{width:300px;flex-shrink:0;border-left:1px solid #e0e5ee;background:#fff;overflow:auto;padding:20px}
 .side-title{font-size:14px;font-weight:700;color:#15233a;margin-bottom:16px}
 .zona-list{display:flex;flex-direction:column;gap:10px}
 .zona-item{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid #eef1f6;border-radius:11px}
@@ -78,4 +78,20 @@ onUnmounted(()=>{ if(map){map.remove();map=null} })
 .zinfo{flex:1}.zname{font-size:13.5px;font-weight:600;color:#15233a}.zsub{font-size:11.5px;color:#7a8699}
 .zcount{font-size:18px;font-weight:700;color:#15233a}
 .no-zonas{font-size:13px;color:#9aa6b6;text-align:center;padding:20px}
+
+/* ── Tablet ──────────────────────────────── */
+@media (min-width:768px) and (max-width:1150px){
+  .mapa-side{width:220px;padding:14px}
+}
+
+/* ── Móvil ───────────────────────────────── */
+@media (max-width:767px){
+  .mapa-view{flex-direction:column}
+  .map-area{flex:0 0 52vh}
+  .mapa-side{width:100%;border-left:none;border-top:1px solid #e0e5ee;padding:14px 16px;flex:1;overflow:auto}
+  .side-title{font-size:13px;margin-bottom:10px}
+  .zona-list{flex-direction:row;flex-wrap:wrap;gap:8px}
+  .zona-item{flex:1 1 calc(50% - 4px);padding:10px 12px;min-width:140px}
+  .zcount{font-size:16px}
+}
 </style>
