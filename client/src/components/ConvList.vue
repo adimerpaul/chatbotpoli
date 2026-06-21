@@ -11,6 +11,7 @@
         <select v-model="store.filterPrioridad" class="sel">
           <option v-for="p in ['Todas','Alta','Media','Baja']" :key="p">{{ p }}</option>
         </select>
+        <button class="btn-sound" @click="speakEmergency" title="Probar alerta de voz">🔊</button>
         <button class="btn-refresh" @click="reload" :disabled="loading" :title="loading ? 'Actualizando…' : 'Actualizar desde base de datos'">
           <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/>
@@ -96,30 +97,70 @@ async function reload() {
 }
 
 // ── Alerta de voz para emergencias nuevas (Web Speech API) ──────────────────
-const alertedIds = new Set()
+const alertedIds          = new Set() // IDs ya conocidos (evita alertar al cargar)
+const alertedEmergencyIds = new Set() // IDs que ya sonaron como Emergencia
 
 onMounted(() => {
-  store.convs.forEach(c => alertedIds.add(c.id))
+  store.convs.forEach(c => {
+    alertedIds.add(c.id)
+    if (c.tipo === 'Emergencia') alertedEmergencyIds.add(c.id)
+  })
 })
 
+// Caso 1: llega conversación completamente nueva
 watch(() => store.convs.length, () => {
   store.convs.forEach(c => {
     if (alertedIds.has(c.id)) return
     alertedIds.add(c.id)
-    const age = Date.now() - (c.createdAt || 0)
-    if (c.tipo === 'Emergencia' && age < 15000) speakEmergency()
+    if (c.tipo === 'Emergencia') {
+      alertedEmergencyIds.add(c.id)
+      const age = Date.now() - (c.createdAt || 0)
+      if (age < 15000) speakEmergency()
+    }
   })
 })
+
+// Caso 2: conv existente cambia tipo → Emergencia (la IA clasifica después de recibir el mensaje)
+watch(
+  () => store.convs.map(c => c.id + ':' + c.tipo).join('|'),
+  () => {
+    store.convs.forEach(c => {
+      if (c.tipo === 'Emergencia' && !alertedEmergencyIds.has(c.id)) {
+        alertedEmergencyIds.add(c.id)
+        speakEmergency()
+      }
+    })
+  }
+)
 
 function speakEmergency() {
   if (!window.speechSynthesis) return
   window.speechSynthesis.cancel()
-  const u = new SpeechSynthesisUtterance('Atención. Entró una emergencia al sistema.')
-  u.lang = 'es-ES'
-  u.rate = 0.82
-  u.pitch = 0.7
-  u.volume = 1
-  window.speechSynthesis.speak(u)
+
+  const doSpeak = () => {
+    const u = new SpeechSynthesisUtterance('Atención, acaba de entrar una emergencia.')
+    const voices = window.speechSynthesis.getVoices()
+    // Preferir voz Microsoft en español (más natural en Windows)
+    const voz = voices.find(v => v.lang.startsWith('es') && /microsoft/i.test(v.name))
+      || voices.find(v => v.lang.startsWith('es'))
+    if (voz) u.voice = voz
+    u.lang   = 'es-ES'
+    u.rate   = 0.78
+    u.pitch  = 0.55
+    u.volume = 1
+    window.speechSynthesis.speak(u)
+  }
+
+  // Las voces se cargan de forma asíncrona la primera vez
+  const voices = window.speechSynthesis.getVoices()
+  if (voices.length > 0) {
+    doSpeak()
+  } else {
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null
+      doSpeak()
+    }
+  }
 }
 
 // ── Colores ─────────────────────────────────────────────────────────────────
@@ -157,6 +198,8 @@ const bs = ([fg,bg]) => ({display:'inline-flex',alignItems:'center',padding:'3px
 .prio-row{display:flex;align-items:center;gap:9px}
 .prio-label{font-size:11.5px;color:#7a8699;font-weight:500}
 .sel{flex:1;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;padding:6px 9px;font-size:12.5px;color:#1a2433;outline:none;cursor:pointer}
+.btn-sound{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;cursor:pointer;font-size:14px;transition:background .15s}
+.btn-sound:hover{background:#e3e8f0}
 .btn-refresh{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid #e3e8f0;background:#f7f9fc;border-radius:8px;cursor:pointer;color:#5a6b82;transition:background .15s,color .15s}
 .btn-refresh:hover:not(:disabled){background:#e3e8f0;color:#15233a}
 .btn-refresh:disabled{opacity:.5;cursor:not-allowed}
