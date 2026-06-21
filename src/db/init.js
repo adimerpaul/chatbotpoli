@@ -177,6 +177,25 @@ async function initDB() {
       }
     }
 
+    // Tabla: auditoría de cambios (estilo laravel-auditing)
+    await conn.query(`
+      CREATE TABLE IF NOT EXISTS audits (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        evento          ENUM('created','updated','deleted','restored','system') NOT NULL,
+        tabla           VARCHAR(50) NOT NULL,
+        registro_id     VARCHAR(50) NOT NULL,
+        usuario_id      INT NULL,
+        usuario_nombre  VARCHAR(150) NULL,
+        valores_antes   JSON NULL,
+        valores_despues JSON NULL,
+        ip              VARCHAR(45) NULL,
+        created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tabla_reg  (tabla, registro_id),
+        INDEX idx_usuario    (usuario_id),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     // Columnas opcionales añadidas después del esquema original
     const alteraciones = [
       "ALTER TABLE conversaciones ADD COLUMN coords VARCHAR(100) NULL DEFAULT NULL",

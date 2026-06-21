@@ -14,6 +14,7 @@ const fs = require('fs');
 const store = require('../store/conversations');
 const { analyzeConversation, generateBotResponse } = require('./claude');
 const db = require('../db/service');
+const { saveAudit } = require('../db/audit');
 
 const authPath  = path.join(__dirname, '../../.baileys_auth');
 const mediaDir  = path.join(__dirname, '../../public/media');
@@ -245,7 +246,13 @@ async function handleIncoming(msg) {
     store.remove(phone);
   }
 
+  const esNueva = !store.get(phone);
   store.getOrCreate(phone);
+  if (esNueva) {
+    const c = store.get(phone);
+    saveAudit({ evento: 'created', tabla: 'conversaciones', registroId: c.id,
+      despues: { phone, canal: 'WhatsApp' }, usuarioNombre: 'WhatsApp Bot' });
+  }
 
   // Actualizar nombre con el del contacto de WhatsApp si está disponible
   const waName = msg.pushName || '';
