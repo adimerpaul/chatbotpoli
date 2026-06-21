@@ -10,7 +10,8 @@ const routes = [
   { path: '/stats',    name: 'stats',    component: () => import('@/views/StatsView.vue') },
   { path: '/whatsapp', name: 'whatsapp', component: () => import('@/views/WhatsappView.vue') },
   { path: '/usuarios',    name: 'usuarios',    component: () => import('@/views/UsuariosView.vue') },
-  { path: '/conocimiento', name: 'conocimiento', component: () => import('@/views/KnowledgeView.vue') }
+  { path: '/conocimiento', name: 'conocimiento', component: () => import('@/views/KnowledgeView.vue') },
+  { path: '/reportes',    name: 'reportes',    component: () => import('@/views/ReportesView.vue') }
 ]
 
 const router = createRouter({ history: createWebHistory(), routes })

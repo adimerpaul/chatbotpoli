@@ -28,8 +28,13 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/me', authMiddleware, (req, res) => {
-  res.json({ user: req.user });
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const permisos = await authDb.getUserPermissions(req.user.id);
+    res.json({ user: { ...req.user, permisos } });
+  } catch {
+    res.json({ user: req.user });
+  }
 });
 
 // Lista de agentes activos — accesible a cualquier usuario autenticado (para el dropdown)

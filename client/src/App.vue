@@ -37,7 +37,7 @@
           Conectar celular WA
           <span v-if="wa.status==='qr'" class="nav-badge">!</span>
         </RouterLink>
-        <template v-if="auth.hasPerm('gestionar_usuarios') || auth.hasPerm('gestionar_conocimiento')">
+        <template v-if="auth.hasPerm('gestionar_usuarios') || auth.hasPerm('gestionar_conocimiento') || auth.hasPerm('ver_reportes')">
           <div class="nav-label" style="margin-top:10px">ADMINISTRACIÓN</div>
           <RouterLink v-if="auth.hasPerm('gestionar_usuarios')" to="/usuarios" class="nav-item">
             <span class="nav-dot" style="background:#e87d3e"></span>
@@ -46,6 +46,10 @@
           <RouterLink v-if="auth.hasPerm('gestionar_conocimiento')" to="/conocimiento" class="nav-item">
             <span class="nav-dot" style="background:#9b59b6"></span>
             Base de Conocimiento IA
+          </RouterLink>
+          <RouterLink v-if="auth.hasPerm('ver_reportes')" to="/reportes" class="nav-item">
+            <span class="nav-dot" style="background:#16a085"></span>
+            Reportes
           </RouterLink>
         </template>
         <div class="ai-card">
@@ -137,7 +141,8 @@ const META = {
   '/stats':    ['Estadísticas','Indicadores de gestión del centro de atención'],
   '/whatsapp': ['Conectar celular de WhatsApp','Vincula el número de WhatsApp del canal ciudadano'],
   '/usuarios':     ['Gestión de Usuarios','Administración de cuentas y permisos del panel'],
-  '/conocimiento': ['Base de Conocimiento IA','Preguntas y respuestas que el asistente IA usará para atender al ciudadano']
+  '/conocimiento': ['Base de Conocimiento IA','Preguntas y respuestas que el asistente IA usará para atender al ciudadano'],
+  '/reportes':     ['Reportes','Busca, filtra y exporta casos en Excel o PDF']
 }
 const pageTitle = computed(() => (META[route.path]||META['/bandeja'])[0])
 const pageSub   = computed(() => (META[route.path]||META['/bandeja'])[1])
@@ -149,6 +154,11 @@ function logout() {
 
 onMounted(async () => {
   if (!auth.isLoggedIn) return
+
+  // Refrescar permisos desde la BD (el JWT puede estar desactualizado)
+  const me = await apiFetch('/api/auth/me').then(r=>r.json()).catch(()=>null)
+  if (me?.user) auth.setAuth(auth.token, me.user)
+
   const s = await apiFetch('/api/status').then(r=>r.json()).catch(()=>({}))
   if (s.status==='ready') wa.setReady(s.phone)
   else if (s.status==='qr' && s.qrDataUrl) wa.setQR(s.qrDataUrl)

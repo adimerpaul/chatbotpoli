@@ -9,7 +9,8 @@ const ALL_PERMS = [
   'eliminar_conversaciones',
   'gestionar_usuarios',
   'gestionar_bot',
-  'gestionar_conocimiento'
+  'gestionar_conocimiento',
+  'ver_reportes'
 ];
 
 async function findUserByUsername(username) {

@@ -1,7 +1,7 @@
 const pool = require('./connection');
 const bcrypt = require('bcryptjs');
 
-const ALL_PERMS = ['ver_conversaciones','enviar_mensajes','tomar_casos','cambiar_estado','eliminar_conversaciones','gestionar_usuarios','gestionar_bot','gestionar_conocimiento'];
+const ALL_PERMS = ['ver_conversaciones','enviar_mensajes','tomar_casos','cambiar_estado','eliminar_conversaciones','gestionar_usuarios','gestionar_bot','gestionar_conocimiento','ver_reportes'];
 
 async function initDB() {
   const conn = await pool.getConnection();

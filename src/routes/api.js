@@ -178,4 +178,51 @@ router.patch('/conversations/:id', async (req, res) => {
   res.json(updated);
 });
 
+// ── Reportes ─────────────────────────────────────────────────────────────────
+const pool = require('../db/connection');
+const { authMiddleware } = require('../middleware/auth');
+
+router.get('/reportes', authMiddleware, async (req, res) => {
+  if (!req.user.permisos.includes('ver_reportes')) return res.status(403).json({ error: 'Sin permisos' });
+
+  const { desde, hasta, celular, tipo, keyword, page = 1, limit = 50 } = req.query;
+  const offset = (Number(page) - 1) * Number(limit);
+  const wheres = ['c.deleted_at IS NULL', 'ci.deleted_at IS NULL'];
+  const vals = [];
+
+  if (desde) { wheres.push('c.created_at >= ?'); vals.push(desde + ' 00:00:00'); }
+  if (hasta) { wheres.push('c.created_at <= ?'); vals.push(hasta + ' 23:59:59'); }
+  if (celular) { wheres.push('ci.phone LIKE ?'); vals.push(`%${celular.replace(/\D/g,'')}%`); }
+  if (tipo && tipo !== 'Todos') { wheres.push('c.tipo = ?'); vals.push(tipo); }
+  if (keyword) {
+    wheres.push('(c.delito LIKE ? OR c.zona LIKE ? OR c.recomendacion LIKE ? OR ci.nombre LIKE ?)');
+    const kw = `%${keyword}%`;
+    vals.push(kw, kw, kw, kw);
+  }
+
+  const where = 'WHERE ' + wheres.join(' AND ');
+
+  try {
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) as total FROM conversaciones c JOIN ciudadanos ci ON ci.id = c.ciudadano_id ${where}`,
+      vals
+    );
+    const [rows] = await pool.query(
+      `SELECT c.folio, c.tipo, c.prioridad, c.estado, c.delito, c.zona, c.agente,
+              c.ai_confidence, c.recomendacion, c.created_at, c.updated_at,
+              ci.phone, ci.nombre,
+              (SELECT COUNT(*) FROM mensajes m WHERE m.conversacion_id = c.id AND m.deleted_at IS NULL) AS total_mensajes
+       FROM conversaciones c
+       JOIN ciudadanos ci ON ci.id = c.ciudadano_id
+       ${where}
+       ORDER BY c.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...vals, Number(limit), offset]
+    );
+    res.json({ rows, total, pages: Math.ceil(total / Number(limit)) || 1 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
